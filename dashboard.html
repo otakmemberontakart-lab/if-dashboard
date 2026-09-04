@@ -1,0 +1,2331 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IF Dashboard</title>
+<!-- Socket.IO — versi harus match dengan flask-socketio di server -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+<!-- Leaflet.js untuk map -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body { font-family: system-ui, -apple-system, sans-serif; background: #FAFAF7; color: #1A1814; display: flex; flex-direction: column; }
+
+/* ── Topbar ─────────────────────────────────── */
+.topbar {
+  padding: 8px 18px; background: #fff; border-bottom: 1px solid #D5CDBA;
+  display: flex; align-items: center; gap: 14px; flex-shrink: 0;
+}
+.brand { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.brand-ico { color: #C49228; font-size: 14px; }
+.brand-txt { font-size: 10px; letter-spacing: .28em; font-weight: 700; text-transform: uppercase; }
+
+.ip-group { display: flex; align-items: center; gap: 6px; flex: 1; }
+.ip-input {
+  font-family: 'Courier New', monospace; font-size: 11px; padding: 5px 10px;
+  border: 1px solid #D5CDBA; border-radius: 4px; background: #F5F0E8; color: #1A1814;
+  width: 195px; outline: none; transition: border-color .15s;
+}
+.ip-input:focus { border-color: #C49228; }
+.ip-input:disabled { opacity: .45; cursor: not-allowed; }
+.ip-hint { font-size: 9px; color: #9A8E7A; letter-spacing: .05em; }
+
+.conn-btn {
+  padding: 5px 14px; background: #C49228; color: #fff; border: 1px solid #C49228;
+  border-radius: 4px; font-size: 9px; font-weight: 700; letter-spacing: .12em;
+  text-transform: uppercase; cursor: pointer; transition: all .15s; white-space: nowrap;
+}
+.conn-btn:hover { background: #A07820; }
+.conn-btn.connected { background: transparent; color: #C49228; }
+.conn-btn.connecting { background: #E8D898; color: #8B6820; cursor: wait; }
+
+.conn-status { display: flex; align-items: center; gap: 7px; flex-shrink: 0; margin-left: auto; }
+.cdot { width: 7px; height: 7px; border-radius: 50%; background: #D5CDBA; transition: background .3s; }
+.cdot.live { background: #7ABF56; animation: pulse 2.5s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.55} }
+.clbl { font-size: 9px; letter-spacing: .13em; color: #4A4438; text-transform: uppercase; }
+
+/* ── Layout ─────────────────────────────────── */
+.layout { display: flex; flex: 1; overflow: hidden; }
+
+/* ── Left Panel (sekarang full-width, .right dihapus) ── */
+.left { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+/* ── Right Panel: AP Quick Set + Automation ──── */
+.right { flex: 1; max-width: 420px; display: flex; flex-direction: column; background: #F2EDE0; border-left: 1px solid #D5CDBA; overflow-y: auto; padding: 10px; gap: 7px; }
+
+.irow { display: grid; grid-template-columns: repeat(6,1fr); gap: 2px; padding: 2px; background: #D5CDBA; flex-shrink: 0; }
+.ins { background: #F2EDE0; padding: 6px 10px; }
+.ins-l { display: block; font-size: 9px; letter-spacing: .18em; color: #C49228; font-weight: 700; text-transform: uppercase; margin-bottom: 3px; }
+.ins-v {
+  font-family: 'Courier New', monospace; font-size: 16px; font-weight: 700;
+  color: #1A1814; line-height: 1; transition: color .4s;
+}
+.ins-v.flash { color: #C49228; }
+.ins-u { font-size: 8px; color: #4A4438; margin-left: 2px; }
+
+.pbar { display: flex; align-items: center; gap: 10px; padding: 5px 18px; background: #F5EAC8; border-bottom: 1px solid #E8D898; flex-shrink: 0; }
+.ptag { font-size: 9px; letter-spacing: .2em; font-weight: 700; color: #8B6820; text-transform: uppercase; }
+.pinfo { font-size: 9px; color: #4A4438; letter-spacing: .04em; }
+.pinfo b { color: #1A1814; font-weight: 700; }
+.psep { color: #D5CDBA; font-size: 9px; }
+
+.cbody { flex: 1; overflow-y: auto; padding: 8px 12px; display: flex; flex-direction: column; gap: 7px; }
+.sec { background: #F2EDE0; border-radius: 6px; padding: 10px 12px; }
+.sec-hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.sec-t { font-size: 9px; letter-spacing: .22em; font-weight: 700; color: #C49228; text-transform: uppercase; }
+
+.btn {
+  padding: 4px 8px; background: #E8E1CF; border: 1px solid #D5CDBA; border-radius: 4px;
+  font-size: 9px; font-weight: 700; letter-spacing: .1em; cursor: pointer;
+  text-transform: uppercase; color: #4A4438; transition: all .12s; white-space: nowrap; user-select: none;
+}
+.btn:hover { border-color: #C49228; color: #8B6820; }
+.btn.on { background: #C49228; border-color: #C49228; color: #fff; }
+.btn.on:hover { background: #A07820; }
+.btn.armed { background: #F5EAC8; border-color: #C49228; color: #8B6820; }
+.btn.starting { background: #EAC842; border-color: #C8A800; color: #4A3800; }
+
+.brow { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-bottom: 5px; }
+.brow:last-child { margin-bottom: 0; }
+.blbl { font-size: 9px; letter-spacing: .1em; color: #4A4438; font-weight: 700; text-transform: uppercase; min-width: 55px; flex-shrink: 0; }
+
+/* AP inputs */
+.apgrid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 5px; margin-bottom: 7px; }
+.abox { background: #E8E1CF; border-radius: 4px; padding: 6px 7px; }
+.abox-l { font-size: 8px; letter-spacing: .18em; color: #C49228; font-weight: 700; text-transform: uppercase; margin-bottom: 3px; }
+.abox-c { display: flex; align-items: center; gap: 3px; }
+.abox-v {
+  font-family: 'Courier New', monospace; font-size: 13px; font-weight: 700; color: #1A1814;
+  flex: 1; text-align: center; background: transparent; border: 1px solid transparent;
+  outline: none; width: 44px; border-radius: 3px; padding: 1px 2px;
+  -moz-appearance: textfield; transition: border-color .15s;
+}
+.abox-v::-webkit-inner-spin-button, .abox-v::-webkit-outer-spin-button { -webkit-appearance: none; }
+.abox-v:focus { border-color: #C49228; background: #fff; }
+.abox-hint { font-size: 7px; color: #9A8E7A; margin-top: 3px; letter-spacing: .05em; }
+.aarr { padding: 2px 4px; background: #D5CDBA; border: none; border-radius: 3px; cursor: pointer; font-size: 9px; color: #4A4438; }
+.aarr:hover { background: #C49228; color: #fff; }
+.apmodes { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+.tcol { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+
+/* ── ILS / LOC / GS indicator ────────────────── */
+.ils-bar {
+  background: #1A1814; border-radius: 8px; padding: 8px 14px;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.ils-col { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 200px; }
+.ils-dot { width: 8px; height: 8px; border-radius: 50%; background: #5A5448; flex-shrink: 0; transition: background .3s; }
+.ils-label { font-size: 8px; letter-spacing: .2em; font-weight: 700; color: #6A6458; text-transform: uppercase; min-width: 24px; }
+.ils-status { font-size: 10px; font-weight: 700; letter-spacing: .08em; color: #5A5448; transition: color .3s; white-space: nowrap; }
+.ils-needle-wrap { flex: 1; }
+.ils-track { position: relative; height: 4px; background: #2A2820; border-radius: 2px; margin: 0 4px; }
+.ils-track-center { position: absolute; left: 50%; top: -2px; width: 1px; height: 8px; background: #3A3530; transform: translateX(-50%); }
+.ils-needle-h { position: absolute; top: 50%; width: 8px; height: 8px; border-radius: 50%; transform: translate(-50%, -50%); left: 50%; transition: left .2s ease, background .3s; }
+.ils-dev { font-family: 'Courier New', monospace; font-size: 9px; color: #5A5448; min-width: 36px; text-align: right; transition: color .3s; }
+.ils-sep { width: 1px; height: 32px; background: #2A2820; flex-shrink: 0; }
+.ils-appr-ready {
+  display: none; align-items: center; gap: 6px;
+  background: #1A2A10; border: 1px solid #3A6A2A; border-radius: 6px;
+  padding: 5px 10px; font-size: 9px; font-weight: 700;
+  letter-spacing: .1em; color: #7BC44A; text-transform: uppercase;
+  animation: ilsPulse 1.5s ease-in-out infinite;
+}
+@keyframes ilsPulse { 0%,100%{opacity:1} 50%{opacity:.7} }
+.ctrl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; align-items: start; }
+.ctrl-col { display: flex; flex-direction: column; gap: 7px; }
+
+/* ── Quick Set inputs ────────────────────────── */
+.qs-row { display: flex; align-items: center; gap: 5px; margin-bottom: 5px; }
+.qs-row:last-child { margin-bottom: 0; }
+.qs-lbl { font-size: 8px; letter-spacing:.15em; font-weight:700; color:#C49228; text-transform:uppercase; min-width:26px; }
+.qs-inp {
+  width: 62px; background: #1A1814; border: 1px solid #3A3530; border-radius: 4px;
+  color: #F2EDE0; font-family:'Courier New',monospace; font-size:12px; font-weight:700;
+  padding: 3px 5px; text-align:right; -moz-appearance:textfield;
+}
+.qs-inp::-webkit-inner-spin-button,.qs-inp::-webkit-outer-spin-button{-webkit-appearance:none}
+.qs-inp:focus { outline:none; border-color:#C49228; }
+.qs-unit { font-size:8px; color:#9A8E7A; min-width:22px; }
+.qs-apply {
+  margin-left:auto; background:#C49228; color:#1A1814; border:none; border-radius:4px;
+  padding:4px 10px; font-size:8px; font-weight:700; letter-spacing:.12em; cursor:pointer; text-transform:uppercase;
+}
+.qs-apply:hover { background:#D4A430; }
+
+/* ── Automation ──────────────────────────────── */
+.rule-add-row { display:flex; align-items:center; gap:4px; flex-wrap:wrap; margin-bottom:7px; }
+.ra-lbl { font-size:8px; color:#9A8E7A; letter-spacing:.1em; text-transform:uppercase; }
+.ra-inp { width:46px; background:#1A1814; border:1px solid #3A3530; border-radius:4px; color:#F2EDE0; font-family:'Courier New',monospace; font-size:11px; font-weight:700; padding:3px 4px; text-align:right; -moz-appearance:textfield; }
+.ra-inp::-webkit-inner-spin-button,.ra-inp::-webkit-outer-spin-button{-webkit-appearance:none}
+.ra-inp:focus { outline:none; border-color:#C49228; }
+.ra-unit { font-size:8px; color:#6A6458; }
+.ra-add { background:#2A4A1A; color:#7BC44A; border:1px solid #3A6A2A; border-radius:4px; padding:4px 8px; font-size:8px; font-weight:700; cursor:pointer; letter-spacing:.1em; text-transform:uppercase; margin-left:auto; }
+.ra-add:hover { background:#3A6A2A; }
+.rule-list { display:flex; flex-direction:column; gap:4px; }
+.rule-item { display:flex; align-items:center; gap:5px; background:#1A1814; border-radius:4px; padding:5px 7px; }
+.rule-info { flex:1; font-family:'Courier New',monospace; font-size:9px; color:#C0BAA8; line-height:1.4; }
+.rule-dist { color:#C49228; font-weight:700; }
+.rule-vals { color:#F2EDE0; }
+.rule-badge { font-size:7px; padding:2px 5px; border-radius:3px; font-weight:700; letter-spacing:.1em; flex-shrink:0; }
+.rule-badge.armed { background:#1A2A10; color:#7BC44A; border:1px solid #3A6A2A; }
+.rule-badge.fired { background:#101828; color:#5090D0; border:1px solid #2A3A6A; }
+.rule-del { background:none; border:none; color:#5A5448; cursor:pointer; font-size:14px; line-height:1; padding:0; flex-shrink:0; }
+.rule-del:hover { color:#E07070; }
+.rule-empty { font-size:9px; color:#5A5448; text-align:center; padding:8px 0; }
+
+/* ── Large notification ──────────────────────── */
+.notif-stack { position:fixed; bottom:20px; right:20px; z-index:9999; display:flex; flex-direction:column; gap:8px; pointer-events:none; }
+.notif { background:#1A1814; border-radius:10px; padding:14px 16px 12px; pointer-events:all; min-width:260px; max-width:320px; animation:nfIn .25s ease; }
+.notif.n-add { border:1px solid #3A6A2A; }
+.notif.n-fire { border:2px solid #C49228; }
+.notif.n-info { border:1px solid #3A4A6A; }
+.notif.n-alert { border:2px solid #E05050; }
+.notif-hd { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+.notif-title { font-size:10px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; }
+.notif.n-add .notif-title { color:#7BC44A; }
+.notif.n-fire .notif-title { color:#C49228; }
+.notif.n-info .notif-title { color:#5090D0; }
+.notif.n-alert .notif-title { color:#E07070; font-size:13px; letter-spacing:.2em; }
+.notif-x { background:none; border:none; color:#6A6458; cursor:pointer; font-size:16px; line-height:1; }
+.notif-x:hover { color:#F2EDE0; }
+.notif-body { font-size:10px; color:#C0BAA8; line-height:1.55; font-family:'Courier New',monospace; }
+.notif-prog { height:2px; background:#3A3530; border-radius:1px; margin-top:10px; overflow:hidden; }
+.notif-prog-bar { height:100%; border-radius:1px; animation:nfProg linear forwards; }
+.notif.n-add .notif-prog-bar { background:#3A6A2A; }
+.notif.n-fire .notif-prog-bar { background:#C49228; }
+.notif.n-info .notif-prog-bar { background:#2A3A6A; }
+.notif.n-alert .notif-prog-bar { background:#E05050; }
+@keyframes nfIn { from{opacity:0;transform:translateX(24px)} to{opacity:1;transform:none} }
+@keyframes nfOut { to{opacity:0;transform:translateX(24px)} }
+@keyframes nfProg { from{width:100%} to{width:0} }
+
+/* ── Info Bar ─────────────────────────────────── */
+.ibar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  padding: 8px 12px; background: #F2EDE0; border-top: 1px solid #D5CDBA;
+  flex-shrink: 0;
+}
+.ib-grp { display: flex; align-items: center; gap: 4px; }
+.ib-sep { width: 1px; height: 16px; background: #D5CDBA; }
+.ib-lbl { font-size: 8px; letter-spacing: .18em; color: #C49228; font-weight: 700; text-transform: uppercase; }
+.ib-val { font-family: 'Courier New', monospace; font-size: 11px; font-weight: 700; color: #1A1814; margin-left: 4px; }
+.ib-dash { color: #D5CDBA; }
+
+/* Toast */
+.toast {
+  position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+  background: #1A1814ee; color: #fff; padding: 5px 16px; border-radius: 20px;
+  font-size: 10px; letter-spacing: .08em; opacity: 0; transition: opacity .18s;
+  pointer-events: none; z-index: 999; white-space: nowrap;
+}
+.toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div class="toast" id="toast"></div>
+
+<!-- ── Topbar ── -->
+<div class="topbar">
+  <div class="brand">
+    <span class="brand-ico">✈</span>
+    <span class="brand-txt">IF Dashboard</span>
+    <span id="ac-name-badge" style="display:none;margin-left:8px;background:#1A1814;color:#C49228;font-size:9px;font-weight:700;letter-spacing:.08em;padding:3px 8px;border-radius:4px"></span>
+  </div>
+
+  <div class="ip-group">
+    <input class="ip-input" id="if-ip" type="text" placeholder="IP iPhone  (cth: 192.168.1.5)" maxlength="15">
+    <button class="conn-btn" id="conn-btn" onclick="toggleConnect()">Connect</button>
+    <button onclick="runDiscovery()" id="discover-btn" style="background:transparent;border:1px solid #D5CDBA;border-radius:4px;padding:6px 10px;font-size:10px;font-weight:700;letter-spacing:.08em;color:#8B6820;cursor:pointer;text-transform:uppercase">🔍 Cari IF</button>
+    <span class="ip-hint" id="discover-hint">Settings → Wi-Fi → klik nama jaringan untuk lihat IP</span>
+  </div>
+
+  <div class="conn-status">
+    <div class="cdot" id="cdot"></div>
+    <span class="clbl" id="clbl">Tidak terhubung</span>
+    <button onclick="openMap()" style="margin-left:10px;background:transparent;border:1px solid #D5CDBA;border-radius:4px;padding:3px 8px;font-size:9px;font-weight:700;letter-spacing:.1em;color:#8B6820;cursor:pointer;text-transform:uppercase">⊞ Map</button>
+    <button onclick="openPFD()" style="background:transparent;border:1px solid #D5CDBA;border-radius:4px;padding:3px 8px;font-size:9px;font-weight:700;letter-spacing:.1em;color:#8B6820;cursor:pointer;text-transform:uppercase">◈ PFD</button>
+    <button onclick="togglePFDMini()" id="btn-pfd-mini" style="background:transparent;border:1px solid #D5CDBA;border-radius:4px;padding:3px 8px;font-size:9px;font-weight:700;letter-spacing:.1em;color:#8B6820;cursor:pointer;text-transform:uppercase">▣ Mini</button>
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- ── LEFT ── -->
+  <div class="left">
+
+    <!-- Instruments row -->
+    <div class="irow">
+      <div class="ins"><span class="ins-l">Altitude</span><span class="ins-v" id="iv-alt">──</span><span class="ins-u">FT</span></div>
+      <div class="ins"><span class="ins-l">Airspeed</span><span class="ins-v" id="iv-spd">──</span><span class="ins-u">KTS</span></div>
+      <div class="ins"><span class="ins-l">Heading</span><span class="ins-v" id="iv-hdg">──</span><span class="ins-u">°</span></div>
+      <div class="ins"><span class="ins-l">Vert Spd</span><span class="ins-v" id="iv-vs">──</span><span class="ins-u">FPM</span></div>
+      <div class="ins"><span class="ins-l">Gnd Spd</span><span class="ins-v" id="iv-gs">──</span><span class="ins-u">KTS</span></div>
+      <div class="ins"><span class="ins-l">Mach</span><span class="ins-v" id="iv-mach">──</span></div>
+    </div>
+
+    <!-- Phase bar -->
+    <div class="pbar">
+      <span class="ptag" id="p-loc">──</span>
+      <span class="psep">|</span>
+      <span class="pinfo">DEPARTURE <b id="p-dep">──</b></span>
+      <span class="psep">|</span>
+      <span class="pinfo">ARRIVAL <b id="p-arr">──</b></span>
+      <span class="psep">|</span>
+      <span class="pinfo">FLIGHT TIME <b id="p-ftime">──</b></span>
+    </div>
+
+    <!-- Controls -->
+    <div class="cbody">
+
+      <!-- AUTOPILOT -->
+      <div class="sec">
+        <div class="sec-hd">
+          <span class="sec-t">Autopilot</span>
+          <button class="btn" id="btn-ap" onclick="tog('ap')">AP: OFF</button>
+        </div>
+        <div class="apgrid">
+          <div class="abox">
+            <div class="abox-l">ALT</div>
+            <div class="abox-c">
+              <button class="aarr" onclick="apArrow('alt',-100)">▼</button>
+              <input class="abox-v" id="ap-alt" type="number" value="28000">
+              <button class="aarr" onclick="apArrow('alt',100)">▲</button>
+            </div>
+            <div class="abox-hint">step 100 · Enter to set</div>
+          </div>
+          <div class="abox">
+            <div class="abox-l">V/S</div>
+            <div class="abox-c">
+              <button class="aarr" onclick="apArrow('vs',-100)">▼</button>
+              <input class="abox-v" id="ap-vs" type="number" value="0">
+              <button class="aarr" onclick="apArrow('vs',100)">▲</button>
+            </div>
+            <div class="abox-hint">step 100 · Enter to set</div>
+          </div>
+          <div class="abox">
+            <div class="abox-l" id="ap-spd-label">SPD</div>
+            <div class="abox-c">
+              <button class="aarr" onclick="apArrow('spd',-1)">▼</button>
+              <input class="abox-v" id="ap-spd" type="number" value="290">
+              <button class="aarr" onclick="apArrow('spd',1)">▲</button>
+            </div>
+            <div class="abox-hint" id="ap-spd-hint">step 1 · Enter to set</div>
+          </div>
+          <div class="abox">
+            <div class="abox-l">HDG</div>
+            <div class="abox-c">
+              <button class="aarr" onclick="apArrow('hdg',-1)">▼</button>
+              <input class="abox-v" id="ap-hdg" type="number" value="182" min="0" max="359">
+              <button class="aarr" onclick="apArrow('hdg',1)">▲</button>
+            </div>
+            <div class="abox-hint">step 1 · Enter to set</div>
+          </div>
+        </div>
+        <div class="apmodes">
+          <button class="btn" id="m-alth"  onclick="apM('altHold')">ALT Hold</button>
+          <button class="btn" id="m-vsm"   onclick="apM('vsMode')">V/S Mode</button>
+          <button class="btn" id="m-spdh"  onclick="apM('spdHold')">SPD Hold</button>
+          <button class="btn" id="m-hdgh"  onclick="apM('hdgHold')">HDG Hold</button>
+          <button class="btn" id="m-appr"  onclick="apM('appr')" style="margin-left:auto">APPR</button>
+        </div>
+        <div class="brow">
+          <button class="btn" id="m-lnav" onclick="apM('lnav')">LNAV</button>
+          <button class="btn on" id="ls-gps"  onclick="lnSrc('GPS')">GPS</button>
+          <button class="btn"    id="ls-nav1" onclick="lnSrc('NAV1')">NAV1</button>
+          <button class="btn"    id="ls-nav2" onclick="lnSrc('NAV2')">NAV2</button>
+        </div>
+      </div>
+
+      <!-- ── ILS INDICATOR ──────────────────────────────────────── -->
+      <div class="ils-bar" id="ils-bar">
+        <!-- LOC -->
+        <div class="ils-col">
+          <div class="ils-dot" id="loc-dot"></div>
+          <span class="ils-label">LOC</span>
+          <span class="ils-status" id="loc-status">No Signal</span>
+          <div class="ils-needle-wrap">
+            <div class="ils-track">
+              <div class="ils-track-center"></div>
+              <div class="ils-needle-h" id="loc-needle" style="background:#5A5448"></div>
+            </div>
+          </div>
+          <span class="ils-dev" id="loc-dev">—</span>
+        </div>
+
+        <div class="ils-sep"></div>
+
+        <!-- GS -->
+        <div class="ils-col">
+          <div class="ils-dot" id="gs-dot"></div>
+          <span class="ils-label">G/S</span>
+          <span class="ils-status" id="gs-status">No Signal</span>
+          <div class="ils-needle-wrap">
+            <div class="ils-track">
+              <div class="ils-track-center"></div>
+              <div class="ils-needle-h" id="gs-needle" style="background:#5A5448"></div>
+            </div>
+          </div>
+          <span class="ils-dev" id="gs-dev">—</span>
+        </div>
+
+        <!-- APPR Ready hint -->
+        <div class="ils-appr-ready" id="appr-ready">
+          ✓ LOC &amp; G/S READY — APPR
+        </div>
+      </div>
+
+      <!-- ── 2-COLUMN GRID ─────────────────────────────────────── -->
+      <div class="ctrl-grid">
+
+        <!-- LEFT COL: Flight Controls + Load & Fuel -->
+        <div class="ctrl-col">
+
+          <!-- FLIGHT CONTROLS -->
+          <div class="sec">
+            <div class="sec-hd"><span class="sec-t">Flight Controls</span></div>
+            <div class="brow">
+              <span class="blbl">Gear</span>
+              <button class="btn on" id="g-dn"  onclick="setGear('down')">↓ Down</button>
+              <button class="btn"    id="g-up"  onclick="setGear('up')">↑ Up</button>
+            </div>
+            <div class="brow">
+              <span class="blbl">Spoilers</span>
+              <button class="btn on" id="sp-off" onclick="setSp('off')">Off</button>
+              <button class="btn"    id="sp-arm" onclick="setSp('armed')">Armed</button>
+              <button class="btn"    id="sp-flt" onclick="setSp('flight')">Flight</button>
+            </div>
+            <div class="brow">
+              <span class="blbl">Flaps</span>
+              <button class="btn on" id="fl-0" onclick="setFl(0)">0</button>
+              <button class="btn"    id="fl-1" onclick="setFl(1)">1</button>
+              <button class="btn"    id="fl-2" onclick="setFl(2)">2</button>
+              <button class="btn"    id="fl-3" onclick="setFl(3)">3</button>
+              <button class="btn"    id="fl-4" onclick="setFl(4)">Full</button>
+            </div>
+            <div class="brow">
+              <span class="blbl">Park Brk</span>
+              <button class="btn on" id="btn-brk" onclick="tog('brake')">Park Brk: ON</button>
+              <span class="blbl" style="margin-left:8px">Auto Brk</span>
+              <button class="btn on" id="ab-off" onclick="setAB('off')">Off</button>
+              <button class="btn"    id="ab-low" onclick="setAB('low')">Low</button>
+              <button class="btn"    id="ab-med" onclick="setAB('med')">Med</button>
+              <button class="btn"    id="ab-max" onclick="setAB('max')">Max</button>
+            </div>
+            <div class="brow" style="gap:8px">
+              <span class="blbl">V.Trim</span>
+              <div class="abox" style="flex:1;max-width:220px">
+                <div class="abox-c">
+                  <button class="aarr" onclick="trimArrow(-1)">▼</button>
+                  <input class="abox-v" id="trim-input" type="number" value="0" step="1" min="-100" max="100">
+                  <button class="aarr" onclick="trimArrow(1)">▲</button>
+                </div>
+                <div class="abox-hint">step 1% · Enter to set</div>
+              </div>
+              <span style="font-size:9px;color:#9A8E7A">%</span>
+            </div>
+            <div style="font-size:8px;color:#5A5448;padding:0 2px">
+              Kirim langsung ke sistem trim IF — gak perlu setup binding apapun.
+            </div>
+          </div>
+
+          <!-- LOAD & FUEL — di bawah Flight Controls sekarang -->
+          <div class="sec">
+            <div class="sec-hd"><span class="sec-t">Load & Fuel</span></div>
+            <div class="brow" style="gap:6px;flex-wrap:wrap">
+              <span class="blbl" style="min-width:38px">PAX</span>
+              <input class="mav" id="load-pax" type="number" min="0" step="1" placeholder="67" style="width:60px">
+              <span style="font-size:8px;color:#5A5448">orang</span>
+              <button class="btn" onclick="setLoad('pax')" style="font-size:8px;padding:4px 10px;border-color:#C49228;color:#C49228">SET</button>
+              <span style="width:1px;height:16px;background:#D5CDBA;margin:0 4px"></span>
+              <span class="blbl" style="min-width:44px">Cargo</span>
+              <input class="mav" id="load-cargo" type="number" min="0" step="10" placeholder="2796" style="width:70px">
+              <span style="font-size:8px;color:#5A5448">kg</span>
+              <button class="btn" onclick="setLoad('cargo')" style="font-size:8px;padding:4px 10px;border-color:#C49228;color:#C49228">SET</button>
+              <span style="width:1px;height:16px;background:#D5CDBA;margin:0 4px"></span>
+              <span class="blbl" style="min-width:36px">Fuel</span>
+              <input class="mav" id="load-fuel" type="number" min="0" step="100" placeholder="12000" style="width:75px">
+              <span style="font-size:8px;color:#5A5448">kg</span>
+              <button class="btn" onclick="setLoad('fuel')" style="font-size:8px;padding:4px 10px;border-color:#C49228;color:#C49228">SET</button>
+            </div>
+            <div style="font-size:8px;color:#5A5448;padding:2px 2px 0">
+              PAX dikonversi ×77kg/orang (estimasi). Cargo & Fuel langsung dalam kg.
+            </div>
+          </div>
+
+        </div><!-- /left col -->
+
+        <!-- RIGHT COL: Systems & Power + Lights + Pax Signs -->
+        <div class="ctrl-col">
+
+          <!-- SYSTEMS & POWER -->
+          <div class="sec">
+            <div class="sec-hd"><span class="sec-t">Systems & Power</span></div>
+            <div class="brow">
+              <span class="blbl">Power</span>
+              <button class="btn" id="btn-bat" onclick="tog('bat')">Master Bat</button>
+              <button class="btn" id="btn-ext" onclick="tog('ext')">EXT Power</button>
+              <button class="btn" id="btn-apu" onclick="apuAct()">APU: Off</button>
+              <button class="btn" id="btn-gnd" onclick="tog('gnd')">Gnd Power</button>
+            </div>
+            <div class="brow">
+              <span class="blbl">Engines</span>
+              <button class="btn" id="btn-e1" onclick="engAction(1, !st.e1)">Eng 1: Off</button>
+              <button class="btn" id="btn-e2" onclick="engAction(2, !st.e2)">Eng 2: Off</button>
+              <button class="btn" onclick="sendCmd('autostart')" style="margin-left:auto;border-color:#C49228;color:#C49228;font-size:8px">AUTO START</button>
+            </div>
+          </div>
+
+          <!-- LIGHTS + PAX SIGNS -->
+          <div class="tcol">
+            <div class="sec">
+              <div class="sec-hd"><span class="sec-t">Lights</span></div>
+              <div class="brow" style="flex-wrap:wrap;gap:5px">
+                <button class="btn" id="btn-bcn" onclick="tog('bcn')">Beacon</button>
+                <button class="btn" id="btn-nav" onclick="tog('nav')">Nav</button>
+                <button class="btn" id="btn-str" onclick="tog('str')">Strobes</button>
+                <button class="btn" id="btn-lnd" onclick="tog('lnd')">Landing</button>
+              </div>
+            </div>
+            <div class="sec">
+              <div class="sec-hd"><span class="sec-t">Pax Signs</span></div>
+              <div class="brow" style="flex-wrap:wrap;gap:5px">
+                <button class="btn" id="btn-blt" onclick="tog('blt')">Seat Belt</button>
+                <button class="btn" id="btn-smk" onclick="tog('smk')">No Smoking</button>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /right col -->
+      </div><!-- /ctrl-grid -->
+
+    </div><!-- /cbody -->
+
+    <!-- ── Info bar ── -->
+    <div class="ibar">
+      <div class="ib-grp"><span class="ib-lbl">Dist</span><span class="ib-val ib-dash" id="ib-ddist">──</span></div>
+      <div class="ib-sep"></div>
+      <div class="ib-grp"><span class="ib-lbl">ETE</span><span class="ib-val ib-dash" id="ib-dete">──</span></div>
+      <div class="ib-sep"></div>
+      <div class="ib-grp"><span class="ib-lbl">Next</span><span class="ib-val ib-dash" id="ib-nwpt">───</span></div>
+      <div class="ib-grp"><span class="ib-val ib-dash" id="ib-ndist">──</span></div>
+      <div class="ib-grp"><span class="ib-val ib-dash" id="ib-nete">──</span></div>
+      <div class="ib-sep"></div>
+      <div class="ib-grp"><span class="ib-lbl">Battery</span><span class="ib-val ib-dash" id="ib-bat">──</span></div>
+      <div class="ib-sep"></div>
+      <div class="ib-grp"><span class="ib-lbl">Fuel Rem</span><span class="ib-val ib-dash" id="ib-fuelrem">──</span></div>
+      <div class="ib-grp"><span class="ib-lbl">Used</span><span class="ib-val ib-dash" id="ib-fuelused">──</span></div>
+      <div class="ib-grp"><span class="ib-lbl">Flow</span><span class="ib-val ib-dash" id="ib-ff">──</span></div>
+      <div class="ib-sep"></div>
+      <div class="ib-grp"><span class="ib-lbl">PAX</span><span class="ib-val ib-dash" id="ib-pax">──</span></div>
+      <div class="ib-grp"><span class="ib-lbl">Cargo</span><span class="ib-val ib-dash" id="ib-cargo">──</span></div>
+      <div class="ib-sep"></div>
+      <button class="btn" onclick="sendCmd('fuel.dump')" style="font-size:8px;padding:3px 8px;border-color:#C49228;color:#C49228">FUEL DUMP</button>
+    </div>
+
+  </div><!-- /left -->
+
+  <!-- ── RIGHT: AP Quick Set + Automation ── -->
+  <div class="right">
+
+    <!-- QUICK SET 1: ALT + V/S -->
+    <div class="sec">
+      <div class="sec-hd"><span class="sec-t">AP Quick Set — ALT & V/S</span></div>
+      <div class="qs-row">
+        <span class="qs-lbl">ALT</span>
+        <input class="qs-inp" id="qs1-alt" type="number" placeholder="ft" step="100">
+        <span class="qs-unit">ft</span>
+      </div>
+      <div class="qs-row">
+        <span class="qs-lbl">V/S</span>
+        <input class="qs-inp" id="qs1-vs" type="number" placeholder="fpm" step="100">
+        <span class="qs-unit">fpm</span>
+        <button class="qs-apply" onclick="applyQS1()">→ APPLY</button>
+      </div>
+    </div>
+
+    <!-- QUICK SET 2: ALT + V/S + SPD -->
+    <div class="sec">
+      <div class="sec-hd"><span class="sec-t">AP Quick Set — ALT, V/S & SPD</span></div>
+      <div class="qs-row">
+        <span class="qs-lbl">ALT</span>
+        <input class="qs-inp" id="qs2-alt" type="number" placeholder="ft" step="100">
+        <span class="qs-unit">ft</span>
+      </div>
+      <div class="qs-row">
+        <span class="qs-lbl">V/S</span>
+        <input class="qs-inp" id="qs2-vs" type="number" placeholder="fpm" step="100">
+        <span class="qs-unit">fpm</span>
+      </div>
+      <div class="qs-row">
+        <span class="qs-lbl">SPD</span>
+        <input class="qs-inp" id="qs2-spd" type="number" placeholder="kts" step="1">
+        <span class="qs-unit">kts</span>
+        <button class="qs-apply" onclick="applyQS2()">→ APPLY</button>
+      </div>
+    </div>
+
+    <!-- AUTOMATION -->
+    <div class="sec">
+      <div class="sec-hd">
+        <span class="sec-t">Automation</span>
+        <span style="font-size:8px;color:#9A8E7A;letter-spacing:.08em">DIST TO DEST trigger · one-shot</span>
+      </div>
+      <div class="rule-add-row">
+        <span class="ra-lbl">≤</span>
+        <input class="ra-inp" id="ra-dist" type="number" placeholder="NM" min="1" max="999">
+        <span class="ra-unit">NM</span>
+        <span class="ra-lbl" style="margin-left:4px">ALT</span>
+        <input class="ra-inp" id="ra-alt" type="number" placeholder="ft" step="100">
+        <span class="ra-unit">ft</span>
+        <span class="ra-lbl">V/S</span>
+        <input class="ra-inp" id="ra-vs" type="number" placeholder="fpm" step="100">
+        <span class="ra-unit">fpm</span>
+        <span class="ra-lbl">SPD</span>
+        <input class="ra-inp" id="ra-spd" type="number" placeholder="kts" step="1">
+        <span class="ra-unit">kts</span>
+        <button class="ra-add" onclick="addRule()">+ ADD</button>
+      </div>
+      <div class="rule-list" id="rule-list">
+        <div class="rule-empty" id="rule-empty">Belum ada rule. Tambah di atas.</div>
+      </div>
+    </div>
+
+  </div><!-- /right -->
+
+</div><!-- /layout -->
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+//  Socket.IO — koneksi ke server.py
+// ─────────────────────────────────────────────────────────────────────────────
+const socket = io({ autoConnect: true, reconnection: true, reconnectionDelay: 2000 });
+let isConnected = false;
+let _onGround = true, _nearestAirport = '';
+let _apSpdMode = 0;   // 0 = IAS (kts), 1 = Mach — di-update dari telemetry ap_spd_mode
+
+socket.on('status', (data) => {
+  isConnected = !!data.connected;
+  const dot   = document.getElementById('cdot');
+  const lbl   = document.getElementById('clbl');
+  const btn   = document.getElementById('conn-btn');
+  const input = document.getElementById('if-ip');
+
+  if (data.connected) {
+    dot.classList.add('live');
+    dot.style.background = '';   // clear reconnect color
+    lbl.textContent = 'Connected · ' + (data.ip || '');
+    btn.textContent = 'Disconnect';
+    btn.className = 'conn-btn connected';
+    input.disabled = true;
+    if (data.reconnected) toast('🔄 Reconnected ke Infinite Flight');
+    else toast('✅ Terhubung ke Infinite Flight');
+  } else if (data.reconnecting) {
+    // Auto-reconnect sedang berjalan — jangan ubah tombol Connect
+    dot.classList.remove('live');
+    dot.style.background = '#C49228'; // gold = reconnecting
+    lbl.textContent = data.error || 'Reconnecting...';
+    btn.textContent = 'Reconnecting...';
+    btn.className = 'conn-btn connecting';
+    input.disabled = true;   // tunggu auto-reconnect selesai
+  } else {
+    dot.classList.remove('live');
+    dot.style.background = '';
+    lbl.textContent = data.error || 'Tidak terhubung';
+    btn.textContent = 'Connect';
+    btn.className = 'conn-btn';
+    input.disabled = false;
+    if (data.error && !data.error.includes('Disconnected'))
+      toast('❌ ' + data.error);
+  }
+});
+
+// Telemetry → update instrument displays
+socket.on('telemetry', updateInstruments);
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Discovery — cari IF di jaringan, tawarkan connect otomatis
+// ─────────────────────────────────────────────────────────────────────────────
+function runDiscovery() {
+  const btn  = document.getElementById('discover-btn');
+  const hint = document.getElementById('discover-hint');
+  btn.disabled = true;
+  btn.textContent = '⏳ Mencari...';
+  hint.textContent = 'Mencari Infinite Flight di jaringan (maks 15 detik)...';
+  hint.style.color = '#C49228';
+  socket.emit('discover_only');
+}
+
+socket.on('discover_result', (data) => {
+  const btn  = document.getElementById('discover-btn');
+  const hint = document.getElementById('discover-hint');
+
+  if (data.searching) return;   // sinyal awal, belum ada hasil
+
+  btn.disabled = false;
+  btn.textContent = '🔍 Cari IF';
+
+  if (data.found) {
+    hint.style.color = '#7BC44A';
+    hint.textContent = `Ketemu! ${data.ip}:${data.port}`;
+    showDiscoveryConfirm(data.ip, data.port);
+  } else {
+    hint.style.color = '#E07070';
+    hint.textContent = data.error || 'IF tidak terdeteksi.';
+    toast('❌ ' + (data.error || 'IF tidak terdeteksi'));
+  }
+});
+
+function showDiscoveryConfirm(ip, port) {
+  const stack = document.getElementById('notif-stack');
+  if (!stack) {
+    // Fallback kalau notif-stack belum ada: langsung isi IP saja
+    document.getElementById('if-ip').value = ip;
+    toast(`✅ IF ditemukan: ${ip} — tekan Connect`);
+    return;
+  }
+  const id = 'discover-confirm-' + Date.now();
+  const el = document.createElement('div');
+  el.className = 'notif n-info';
+  el.id = id;
+  el.innerHTML = `
+    <div class="notif-hd">
+      <span class="notif-title">IF Ditemukan</span>
+      <button class="notif-x" onclick="document.getElementById('${id}').remove()">×</button>
+    </div>
+    <div class="notif-body">
+      ${ip}:${port}<br><br>
+      <button onclick="acceptDiscovery('${ip}', ${port}, '${id}')"
+        style="background:#C49228;color:#1A1814;border:none;border-radius:4px;padding:6px 14px;font-size:9px;font-weight:700;letter-spacing:.08em;cursor:pointer;text-transform:uppercase;margin-right:6px">Connect Sekarang</button>
+      <button onclick="document.getElementById('${id}').remove()"
+        style="background:none;border:1px solid #3A3530;color:#9A8E7A;border-radius:4px;padding:6px 14px;font-size:9px;font-weight:700;cursor:pointer;text-transform:uppercase">Nanti Saja</button>
+    </div>`;
+  stack.appendChild(el);
+}
+
+function acceptDiscovery(ip, port, notifId) {
+  document.getElementById('if-ip').value = ip;
+  const el = document.getElementById(notifId);
+  if (el) el.remove();
+  toggleConnect();   // trigger connect flow yang udah ada, pakai IP yang barusan diisi
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Connect / Disconnect
+// ─────────────────────────────────────────────────────────────────────────────
+function toggleConnect() {
+  if (isConnected) {
+    socket.emit('disconnect_if');
+    return;
+  }
+  const ip = document.getElementById('if-ip').value.trim();
+  if (!ip) { toast('Masukkan IP iPhone dulu'); return; }
+  const btn = document.getElementById('conn-btn');
+  btn.textContent = 'Connecting...';
+  btn.className = 'conn-btn connecting';
+  socket.emit('connect_if', { ip });
+}
+
+document.getElementById('if-ip').addEventListener('keydown', e => {
+  if (e.key === 'Enter') toggleConnect();
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Send command ke server.py → IF Connect
+//  Format: { type: 'ap.alt', value: 28000 }
+// ─────────────────────────────────────────────────────────────────────────────
+function sendCmd(type, value) {
+  if (!isConnected) return;
+  socket.emit('command', { type, value: (value !== undefined) ? value : null });
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Instrument Update
+// ─────────────────────────────────────────────────────────────────────────────
+function flashUpdate(id, text) {
+  const el = document.getElementById(id);
+  if (!el || el.textContent === String(text)) return;
+  el.textContent = text;
+  el.classList.add('flash');
+  setTimeout(() => el.classList.remove('flash'), 600);
+}
+
+// ── Info bar helper ──
+function _ib(id, val) {
+  const el = document.getElementById(id);
+  if (el) { el.textContent = val; el.classList.remove('ib-dash'); }
+}
+
+function updateInstruments(d) {
+  // ── Flight instruments ──
+  if (d.alt  !== undefined) flashUpdate('iv-alt',  d.alt.toLocaleString());
+  if (d.spd  !== undefined) flashUpdate('iv-spd',  d.spd);
+  if (d.hdg  !== undefined) flashUpdate('iv-hdg',  d.hdg);
+  if (d.vs   !== undefined) flashUpdate('iv-vs',   (d.vs >= 0 ? '+' : '') + d.vs);
+  if (d.gs   !== undefined) flashUpdate('iv-gs',   d.gs);
+  if (d.mach !== undefined) flashUpdate('iv-mach', d.mach.toFixed(2));
+
+  // ── Status bar: lokasi/ground/flight + departure/arrival/flight time ──
+  if (d.on_ground !== undefined || d.nearest_airport !== undefined) {
+    _onGround = d.on_ground !== undefined ? d.on_ground : _onGround;
+    if (d.nearest_airport !== undefined) _nearestAirport = d.nearest_airport;
+    const loc = document.getElementById('p-loc');
+    if (loc) {
+      loc.textContent = _onGround
+        ? (_nearestAirport ? _nearestAirport + '; GROUND' : 'GROUND')
+        : 'ON FLIGHT';
+    }
+  }
+  if (d.departure !== undefined) {
+    const el = document.getElementById('p-dep');
+    if (el) el.textContent = d.departure || 'belum ditentukan';
+  }
+  if (d.arrival !== undefined) {
+    const el = document.getElementById('p-arr');
+    if (el) el.textContent = d.arrival || 'belum ditentukan';
+  }
+  if (d.flight_time !== undefined) {
+    const el = document.getElementById('p-ftime');
+    if (el) el.textContent = d.flight_time || '──';
+  }
+
+  // ── AP SPD mode: IAS (kts) vs Mach — ubah label/hint/precision ──
+  if (d.ap_spd_mode !== undefined && d.ap_spd_mode !== _apSpdMode) {
+    _apSpdMode = d.ap_spd_mode;
+    const lbl = document.getElementById('ap-spd-label');
+    const hint = document.getElementById('ap-spd-hint');
+    const inp = document.getElementById('ap-spd');
+    if (_apSpdMode === 1) {
+      lbl.textContent = 'SPD (M)';
+      hint.textContent = 'step 0.01 · Mach · Enter to set';
+      inp.step = '0.01';
+    } else {
+      lbl.textContent = 'SPD';
+      hint.textContent = 'step 1 · kts · Enter to set';
+      inp.step = '1';
+    }
+  }
+
+  // ── AP inputs (only if not focused) ──
+  const apSync = { 'ap-alt': d.ap_alt, 'ap-vs': d.ap_vs, 'ap-hdg': d.ap_hdg };
+  for (const [id, val] of Object.entries(apSync)) {
+    if (val === undefined) continue;
+    const el = document.getElementById(id);
+    if (el && document.activeElement !== el) el.value = val;
+  }
+  // SPD di-handle terpisah karena precision beda tergantung mode (Mach = 3 desimal)
+  if (d.ap_spd !== undefined) {
+    const el = document.getElementById('ap-spd');
+    if (el && document.activeElement !== el) {
+      el.value = _apSpdMode === 1 ? Number(d.ap_spd).toFixed(3) : Math.round(d.ap_spd);
+    }
+  }
+
+  // ── AP master ──
+  if (d.ap_active !== undefined) {
+    st.ap = d.ap_active;
+    const btn = document.getElementById('btn-ap');
+    btn.classList.toggle('on', st.ap);
+    btn.textContent = st.ap ? 'AP: ON' : 'AP: OFF';
+  }
+
+  // ── AP modes ──
+  const apModeMap = {
+    ap_alt_on: ['m-alth','altHold'], ap_hdg_on: ['m-hdgh','hdgHold'],
+    ap_spd_on: ['m-spdh','spdHold'], ap_vs_on: ['m-vsm','vsMode'],
+    ap_appr_on:['m-appr','appr'],   ap_lnav_on:['m-lnav','lnav'],
+  };
+  for (const [field,[btnId,stKey]] of Object.entries(apModeMap)) {
+    if (d[field] !== undefined) {
+      st[stKey] = d[field];
+      document.getElementById(btnId).classList.toggle('on', d[field]);
+    }
+  }
+
+  // ── Park brake ──
+  if (d.park_brake !== undefined) {
+    st.brake = d.park_brake;
+    const el = document.getElementById('btn-brk');
+    el.classList.toggle('on', st.brake);
+    el.textContent = st.brake ? 'Park Brk: ON' : 'Park Brakes';
+  }
+
+  // ── Gear ──
+  if (d.gear_state !== undefined) {
+    const dn = d.gear_state === 1;
+    st.gear = dn ? 'down' : 'up';
+    document.getElementById('g-dn').classList.toggle('on', dn);
+    document.getElementById('g-up').classList.toggle('on', !dn);
+  }
+
+  // ── Flaps ──
+  if (d.flaps_state !== undefined) {
+    st.flaps = d.flaps_state;
+    [0,1,2,3,4].forEach(i => document.getElementById('fl-'+i).classList.toggle('on', i === st.flaps));
+  }
+
+  // ── Spoilers — IF values: 0=off, 1=FLIGHT, 2=ARMED ──
+  if (d.sp_state !== undefined) {
+    document.getElementById('sp-off').classList.toggle('on', d.sp_state === 0);
+    const arm = document.getElementById('sp-arm');
+    arm.className = 'btn' + (d.sp_state === 2 ? ' armed' : '');   // 2=ARMED
+    document.getElementById('sp-flt').classList.toggle('on', d.sp_state === 1); // 1=FLIGHT
+  }
+
+  // ── Engines (with N1%) ──
+  const engN1 = { 1: st._eng1_n1 ?? 0, 2: st._eng2_n1 ?? 0 };
+  if (d.eng1_n1 !== undefined) { st._eng1_n1 = d.eng1_n1; engN1[1] = d.eng1_n1; }
+  if (d.eng2_n1 !== undefined) { st._eng2_n1 = d.eng2_n1; engN1[2] = d.eng2_n1; }
+
+  function updateEngBtn(n, state, n1) {
+    const el = document.getElementById('btn-e' + n);
+    if (!el) return;
+    if (isLocked('eng' + n + '_state')) {
+      // Still in startup/shutdown lock — only update N1% display
+      if (state === 1 || state >= 2) {
+        const cur = el.textContent;
+        if (cur.includes('Starting') || cur.includes('ON')) {
+          el.textContent = state >= 2
+            ? `Eng ${n}: ON  ${n1}% N1`
+            : `Eng ${n}: Starting ${n1}%`;
+        }
+      }
+      return;
+    }
+    const prevState = st['_eng'+n+'_state'] ?? -1;
+    if (state === prevState && n1 === st['_eng'+n+'_n1_prev']) return;
+    st['_eng'+n+'_state'] = state;
+    st['_eng'+n+'_n1_prev'] = n1;
+    const on = state >= 2;
+    const starting = state === 1;
+    st['e'+n] = on;
+    if (on) {
+      el.className = 'btn on';
+      el.textContent = `Eng ${n}: ON  ${n1}% N1`;
+    } else if (starting) {
+      el.className = 'btn starting';
+      el.textContent = `Eng ${n}: Starting ${n1}%`;
+    } else {
+      el.className = 'btn';
+      el.textContent = `Eng ${n}: Off`;
+    }
+  }
+
+  if (d.eng1_state !== undefined) updateEngBtn(1, d.eng1_state, engN1[1]);
+  if (d.eng2_state !== undefined) updateEngBtn(2, d.eng2_state, engN1[2]);
+  if (d.eng1_n1 !== undefined && st._eng1_state !== undefined) updateEngBtn(1, st._eng1_state, d.eng1_n1);
+  if (d.eng2_n1 !== undefined && st._eng2_state !== undefined) updateEngBtn(2, st._eng2_state, d.eng2_n1);
+
+  // ── Lights (skip update if locked — prevents flicker setelah set) ──
+  if (d.lt_beacon  !== undefined && !isLocked('bcn') && d.lt_beacon  !== st.bcn) { st.bcn = d.lt_beacon;  document.getElementById('btn-bcn').classList.toggle('on', d.lt_beacon);  }
+  if (d.lt_landing !== undefined && !isLocked('lnd') && d.lt_landing !== st.lnd) { st.lnd = d.lt_landing; document.getElementById('btn-lnd').classList.toggle('on', d.lt_landing); }
+  if (d.lt_strobes !== undefined && !isLocked('str') && d.lt_strobes !== st.str) { st.str = d.lt_strobes; document.getElementById('btn-str').classList.toggle('on', d.lt_strobes); }
+  if (d.lt_nav     !== undefined && !isLocked('nav') && d.lt_nav     !== st.nav) { st.nav = d.lt_nav;     document.getElementById('btn-nav').classList.toggle('on', d.lt_nav);     }
+  // ── Auto Brake sync dari game (kalau diubah dari HP langsung) ──
+  if (d.autobrake_state !== undefined && !isLocked('autobrake')) {
+    const abMap = {0:'off', 1:'low', 2:'med', 3:'max'};
+    const level = abMap[d.autobrake_state];
+    if (level && level !== st.autoBrake) {
+      st.autoBrake = level;
+      ['off','low','med','max'].forEach(x => {
+        const el = document.getElementById('ab-' + x);
+        if (el) el.classList.toggle('on', x === level);
+      });
+    }
+  }
+
+  // ── Electrical systems ──
+  if (d.bat_state !== undefined && !isLocked('bat') && d.bat_state !== st.bat) {
+    st.bat = d.bat_state;
+    const el = document.getElementById('btn-bat');
+    el.classList.toggle('on', st.bat);
+    el.textContent = st.bat ? 'Bat: ON' : 'Master Bat';
+  }
+  if (d.ext_state !== undefined && !isLocked('ext') && d.ext_state !== st.ext) {
+    st.ext = d.ext_state;
+    const el = document.getElementById('btn-ext');
+    el.classList.toggle('on', st.ext);
+    el.textContent = st.ext ? 'EXT Pwr: ON' : 'EXT Power';
+  }
+  if (d.gpu_state !== undefined && !isLocked('gnd') && d.gpu_state !== st.gnd) {
+    st.gnd = d.gpu_state;
+    const el = document.getElementById('btn-gnd');
+    el.classList.toggle('on', st.gnd);
+    el.textContent = st.gnd ? 'Gnd Pwr: ON' : 'Gnd Power';
+  }
+  if (d.apu_state !== undefined && !isLocked('apu')) {
+    const el = document.getElementById('btn-apu');
+    if (d.apu_state === 0 && el.className !== 'btn')              { el.textContent = 'APU: Off';        el.className = 'btn'; }
+    else if (d.apu_state === 1 && !el.className.includes('starting')) { el.textContent = 'APU Starting...'; el.className = 'btn starting'; }
+    else if (d.apu_state >= 2 && !el.className.includes('on'))   { el.textContent = 'APU: ON';         el.className = 'btn on'; }
+  }
+
+  // ── Pax signs (skip if locked) ──
+  if (d.sign_belt  !== undefined && !isLocked('blt') && d.sign_belt  !== st.blt) { st.blt = d.sign_belt;  document.getElementById('btn-blt').classList.toggle('on', d.sign_belt); }
+  if (d.sign_smoke !== undefined && !isLocked('smk') && d.sign_smoke !== st.smk) { st.smk = d.sign_smoke; document.getElementById('btn-smk').classList.toggle('on', d.sign_smoke); }
+
+  // ── ILS indicator ──
+  if (d.loc_alive !== undefined) _ilsSt.locAlive = d.loc_alive;
+  if (d.loc_dev   !== undefined) _ilsSt.locDev   = d.loc_dev;
+  if (d.gs_alive  !== undefined) _ilsSt.gsAlive  = d.gs_alive;
+  if (d.gs_dev    !== undefined) _ilsSt.gsDev    = d.gs_dev;
+  if (d.loc_alive !== undefined || d.loc_dev !== undefined ||
+      d.gs_alive  !== undefined || d.gs_dev  !== undefined) updateILS();
+  if (d.dest_dist !== undefined) {
+    _ib('ib-ddist', d.dest_dist + ' NM');
+    checkRules(d.dest_dist);
+    // Tandai kalau pernah jauh dari tujuan (sedang terbang)
+    if (d.dest_dist > 20) { _apprHadFar = true; _apprReminded = false; }
+    // Fire reminder hanya kalau: sudah pernah jauh + sekarang ≤ 12 + belum pernah remind
+    if (_apprHadFar && d.dest_dist > 0 && d.dest_dist <= 12 && !_apprReminded) {
+      _apprReminded = true;
+      notify('⚠ NYALAKAN APPR !',
+        `≤ 12 NM ke tujuan\nAktifkan APPR MODE sekarang\nCek LOC & G/S sudah Ready ✓`,
+        'alert', 15000);
+    }
+  }
+  if (d.dest_ete     !== undefined) _ib('ib-dete',     d.dest_ete);
+  if (d.next_wpt_name!== undefined) _ib('ib-nwpt',    d.next_wpt_name);
+  if (d.next_wpt_dist!== undefined) _ib('ib-ndist',   d.next_wpt_dist + ' NM');
+  if (d.next_wpt_ete !== undefined) _ib('ib-nete',    d.next_wpt_ete);
+  if (d.bat_ah       !== undefined) _ib('ib-bat',     d.bat_ah + ' Ah');
+  if (d.fuel_rem     !== undefined) _ib('ib-fuelrem', d.fuel_rem.toLocaleString() + ' kg');
+  if (d.fuel_used_0  !== undefined || d.fuel_used_1 !== undefined) {
+    const u0 = d.fuel_used_0 ?? 0, u1 = d.fuel_used_1 ?? 0;
+    _ib('ib-fuelused', (u0 + u1).toLocaleString() + ' kg');
+  }
+  if (d.ff1 !== undefined || d.ff2 !== undefined) {
+    const f1 = d.ff1 ?? 0, f2 = d.ff2 ?? 0;
+    _ib('ib-ff', (f1 + f2).toLocaleString() + ' kg/h');
+  }
+  // ── Aircraft name ──
+  if (d.ac_name !== undefined) {
+    const badge = document.getElementById('ac-name-badge');
+    if (badge && d.ac_name) { badge.textContent = d.ac_name; badge.style.display = 'inline-block'; }
+  }
+  // ── PAX / Cargo load ──
+  if (d.pax_weight_kg !== undefined) {
+    _ib('ib-pax', (d.pax_count_est ?? 0) + ' PAX (' + d.pax_weight_kg.toLocaleString() + ' kg)');
+  }
+  if (d.cargo_weight_kg !== undefined) {
+    _ib('ib-cargo', d.cargo_weight_kg.toLocaleString() + ' kg');
+  }
+  // ── Trim (sync kalau tidak lagi difokus/diketik user) ──
+  if (d.trim !== undefined) {
+    const el = document.getElementById('trim-input');
+    if (el && !isLocked('trim') && document.activeElement !== el) {
+      el.value = Math.round(d.trim);   // d.trim sudah dalam persen dari server, gak perlu ×100 lagi
+    }
+  }
+  // ── Flight plan route → map ──
+  if (d.route_waypoints !== undefined) {
+    _routeWaypoints = d.route_waypoints;
+    if (_mapOpen) drawRouteOnMap();
+  }
+  // ── Map update 1Hz (every 4th tick of 4Hz) ──
+  _mapTick++;
+  if (_mapTick % 4 === 0 && _mapOpen) updateMapData(d);
+  // ── PFD data sync + render ──
+  _pfdSync(d);
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Toast
+// ─────────────────────────────────────────────────────────────────────────────
+let tT;
+function toast(m) {
+  const t = document.getElementById('toast');
+  t.textContent = m;
+  t.classList.add('show');
+  clearTimeout(tT);
+  tT = setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  App State (UI tracking)
+// ─────────────────────────────────────────────────────────────────────────────
+const st = {
+  ap:false, altHold:false, vsMode:false, spdHold:false, hdgHold:false,
+  lnav:false, appr:false, lnavSrc:'GPS',
+  gear:'down', spoilers:'off', flaps:0,
+  brake:true, autoBrake:'off', apu:'off',
+  bat:false, ext:false, gnd:false, e1:false, e2:false,
+  bcn:false, nav:false, str:false, lnd:false, blt:false, smk:false,
+};
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Simple Toggles
+// ─────────────────────────────────────────────────────────────────────────────
+const togCfg = {
+  ap:  { id:'btn-ap',  on:'AP: ON',       off:'AP: OFF',    cmd:'ap.master',    sendVal: true },
+  brake:{ id:'btn-brk',on:'Park Brk: ON', off:'Park Brakes', cmd:'brake' },
+  bat: { id:'btn-bat', on:'Bat: ON',      off:'Master Bat', cmd:'battery',   sendVal: true },
+  ext: { id:'btn-ext', on:'EXT Pwr: ON',  off:'EXT Power',  cmd:'ext.power', sendVal: true },
+  gnd: { id:'btn-gnd', on:'Gnd Pwr: ON',  off:'Gnd Power',  cmd:'gnd.power', sendVal: true },
+  bcn: { id:'btn-bcn', cmd:'light.beacon',  sendVal: true },
+  nav: { id:'btn-nav', cmd:'light.nav',     sendVal: true },
+  str: { id:'btn-str', cmd:'light.strobes', sendVal: true },
+  lnd: { id:'btn-lnd', cmd:'light.landing', sendVal: true },
+  blt: { id:'btn-blt', cmd:'sign.seatbelt', sendVal: true },
+  smk: { id:'btn-smk', cmd:'sign.nosmoking',sendVal: true },
+};
+
+// ── Command lock: prevents telemetry from overriding optimistic UI updates ──
+// Setelah kirim command, lock field N ms agar tidak flicker saat poll balik
+const _lock = {};
+function lockField(k, ms = 2000) { _lock[k] = Date.now() + ms; }
+function isLocked(k) { return !!_lock[k] && Date.now() < _lock[k]; }
+
+function tog(k) {
+  st[k] = !st[k];
+  lockField(k, 2000);
+  const c = togCfg[k]; if (!c) return;
+  const el = document.getElementById(c.id);
+  el.classList.toggle('on', st[k]);
+  if (c.on) el.textContent = st[k] ? c.on : c.off;
+  const lbl = (c.on || k) + ': ' + (st[k] ? 'ON' : 'OFF');
+  toast(lbl + (isConnected ? ' → sent' : ''));
+  sendCmd(c.cmd, c.sendVal ? st[k] : undefined);
+}
+
+// ── Engine individual action ──────────────────────────────────────────────────
+function engAction(n, wantOn) {
+  const el = document.getElementById('btn-e' + n);
+  lockField('eng' + n + '_state', wantOn ? 90000 : 5000); // startup bisa 60-90 detik
+  if (wantOn) {
+    el.className = 'btn starting';
+    el.textContent = `Eng ${n}: Starting 0%`;
+    toast(`Engine ${n} Start → sent`);
+    sendCmd('engine' + n + '.on', true);
+  } else {
+    el.className = 'btn';
+    el.textContent = `Eng ${n}: Off`;
+    toast(`Engine ${n} Stop → sent`);
+    sendCmd('engine' + n + '.off');
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  AP Modes
+// ─────────────────────────────────────────────────────────────────────────────
+const apModeCfg = {
+  altHold: { id:'m-alth', cmd:'ap.altHold' },
+  vsMode:  { id:'m-vsm',  cmd:'ap.vsMode' },
+  spdHold: { id:'m-spdh', cmd:'ap.spdHold' },
+  hdgHold: { id:'m-hdgh', cmd:'ap.hdgHold' },
+  lnav:    { id:'m-lnav', cmd:'ap.lnav' },
+  appr:    { id:'m-appr', cmd:'ap.appr' },
+};
+
+function apM(mode) {
+  st[mode] = !st[mode];
+  document.getElementById(apModeCfg[mode].id).classList.toggle('on', st[mode]);
+  toast(mode + ': ' + (st[mode] ? 'ON' : 'OFF') + (isConnected ? ' → sent' : ''));
+  sendCmd(apModeCfg[mode].cmd, st[mode]);
+}
+
+function lnSrc(s) {
+  st.lnavSrc = s;
+  document.getElementById('ls-gps').classList.toggle('on',  s === 'GPS');
+  document.getElementById('ls-nav1').classList.toggle('on', s === 'NAV1');
+  document.getElementById('ls-nav2').classList.toggle('on', s === 'NAV2');
+  toast('LNAV: ' + s + (isConnected ? ' → sent' : ''));
+  sendCmd('ap.lnav.' + s.toLowerCase());
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  AP Value Inputs
+// ─────────────────────────────────────────────────────────────────────────────
+const apValCfg = {
+  'ap-alt': { delta:100, label:'ALT', wrap:false, cmd:'ap.alt' },
+  'ap-vs':  { delta:100, label:'V/S', wrap:false, cmd:'ap.vs'  },
+  'ap-spd': { delta:1,   label:'SPD', wrap:false, cmd:'ap.spd' },
+  'ap-hdg': { delta:1,   label:'HDG', wrap:true,  cmd:'ap.hdg' },
+};
+
+// Wire Enter key on each AP input
+Object.entries(apValCfg).forEach(([id, conf]) => {
+  const el = document.getElementById(id);
+  el.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      let v = parseFloat(el.value) || 0;
+      if (conf.wrap) v = ((v % 360) + 360) % 360;
+      if (id === 'ap-spd' && _apSpdMode === 1) v = Math.round(v * 1000) / 1000; // 3 desimal buat Mach
+      el.value = v;
+      el.blur();
+      toast('AP ' + conf.label + ' → ' + v + (isConnected ? ' (sent)' : ''));
+      sendCmd(conf.cmd, v);
+    }
+    if (e.key === 'Escape') el.blur();
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault();
+  });
+});
+
+function apArrow(p, delta) {
+  const el = document.getElementById('ap-' + p);
+  const conf = apValCfg['ap-' + p];
+  let v = parseFloat(el.value) || 0;
+  if (p === 'spd' && _apSpdMode === 1) {
+    // Mach mode: step kecil (0.01), bukan step knots (1)
+    v += (delta > 0 ? 0.01 : -0.01);
+    v = Math.round(v * 1000) / 1000;
+  } else {
+    v += delta;
+  }
+  if (p === 'hdg') v = ((v % 360) + 360) % 360;
+  el.value = v;
+  toast('AP ' + p.toUpperCase() + ' → ' + v + (isConnected ? ' (sent)' : ''));
+  sendCmd(conf.cmd, v);
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Flight Controls
+// ─────────────────────────────────────────────────────────────────────────────
+function setGear(pos) {
+  st.gear = pos;
+  document.getElementById('g-dn').classList.toggle('on', pos === 'down');
+  document.getElementById('g-up').classList.toggle('on', pos === 'up');
+  toast('Gear: ' + pos.toUpperCase() + (isConnected ? ' → sent' : ''));
+  sendCmd(pos === 'down' ? 'gear.down' : 'gear.up');
+}
+
+function setSp(mode) {
+  st.spoilers = mode;
+  document.getElementById('sp-off').classList.toggle('on', mode === 'off');
+  const arm = document.getElementById('sp-arm');
+  arm.className = 'btn' + (mode === 'armed' ? ' armed' : (mode === 'off' ? '' : ''));
+  document.getElementById('sp-flt').classList.toggle('on', mode === 'flight');
+  toast('Spoilers: ' + mode + (isConnected ? ' → sent' : ''));
+  sendCmd('spoilers.' + mode);
+}
+
+function setFl(n) {
+  st.flaps = n;
+  [0,1,2,3,4].forEach(i => document.getElementById('fl-' + i).classList.toggle('on', i === n));
+  toast('Flaps: ' + (n === 4 ? 'Full' : n) + (isConnected ? ' → sent' : ''));
+  sendCmd('flaps.' + n);
+}
+
+function setAB(v) {
+  st.autoBrake = v;
+  lockField('autobrake', 2000);
+  ['off','low','med','max'].forEach(x => document.getElementById('ab-' + x).classList.toggle('on', x === v));
+  if (v !== 'off' && st.spoilers === 'off') {
+    setSp('armed');
+    toast('Auto Brake: ' + v + ' · Spoilers → Armed' + (isConnected ? ' (sent)' : ''));
+  } else {
+    toast('Auto Brake: ' + v + (isConnected ? ' → sent' : ''));
+  }
+  sendCmd('autobrake.' + v);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Load & Fuel — set PAX (headcount), Cargo (kg), Fuel (kg) langsung ke IF
+// ─────────────────────────────────────────────────────────────────────────────
+function setLoad(kind) {
+  const idMap = { pax: 'load-pax', cargo: 'load-cargo', fuel: 'load-fuel' };
+  const unitMap = { pax: 'orang', cargo: 'kg', fuel: 'kg' };
+  const el = document.getElementById(idMap[kind]);
+  const v = parseFloat(el.value);
+  if (isNaN(v) || v < 0) { toast('Isi angka valid dulu.'); return; }
+
+  lockField(kind === 'pax' ? 'pax_weight' : (kind === 'cargo' ? 'cargo_weight' : 'fuel_rem'), 3000);
+  toast(kind.toUpperCase() + ' → ' + v + ' ' + unitMap[kind] + (isConnected ? ' (sent)' : ''));
+  sendCmd(kind + '.set', v);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  V.Trim — input angka persen (-100..100), Enter buat set. Direct SetState.
+// ─────────────────────────────────────────────────────────────────────────────
+function sendTrim(pct) {
+  pct = Math.max(-100, Math.min(100, Math.round(pct)));
+  document.getElementById('trim-input').value = pct;
+  lockField('trim', 1500);
+  toast('V.Trim → ' + (pct >= 0 ? '+' : '') + pct + '%' + (isConnected ? ' (sent)' : ''));
+  sendCmd('trim', pct);   // kirim persen mentah — server.py yang convert ke skala IF
+}
+
+function trimArrow(delta) {
+  const el = document.getElementById('trim-input');
+  const v = (parseFloat(el.value) || 0) + delta;
+  sendTrim(v);
+}
+
+document.getElementById('trim-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    sendTrim(parseFloat(document.getElementById('trim-input').value) || 0);
+    document.getElementById('trim-input').blur();
+  }
+  if (e.key === 'Escape') document.getElementById('trim-input').blur();
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  APU control — state driven by telemetry, lock prevents immediate flicker
+// ─────────────────────────────────────────────────────────────────────────────
+function apuAct() {
+  const el = document.getElementById('btn-apu');
+  const isOn = el.className.includes('on');
+  lockField('apu', 8000); // APU startup bisa 6-8 detik
+  if (!isOn) {
+    el.textContent = 'APU Starting...';
+    el.className = 'btn starting';
+    toast('APU Starting... → sent');
+    sendCmd('apu', true);
+  } else {
+    el.textContent = 'APU: Off';
+    el.className = 'btn';
+    toast('APU: OFF → sent');
+    sendCmd('apu', false);
+  }
+}
+
+</script>
+<!-- Notification stack (large, bottom-right) -->
+<div class="notif-stack" id="notif-stack"></div>
+
+<script>
+// ── ILS state ─────────────────────────────────────────────────────────────────
+const _ilsSt = { locAlive: false, locDev: 0, gsAlive: false, gsDev: 0 };
+let _apprReminded = false;
+let _apprHadFar   = false;   // true setelah pernah lihat dist > 20 NM (artinya sedang terbang)
+let _mapTick = 0;
+
+// Thresholds (adjust after testing with real ILS data):
+// distance_to_localizer unit TBD — start with these, tune based on real values
+const ILS_READY       = 0.08;   // |dev| < this → Ready
+const ILS_INTERCEPT   = 0.40;   // |dev| < this → Intercepting, else Capturing
+
+function updateILS() {
+  const locReady = _setILSPanel('loc', _ilsSt.locAlive, _ilsSt.locDev);
+  const gsReady  = _setILSPanel('gs',  _ilsSt.gsAlive,  _ilsSt.gsDev);
+  const hint = document.getElementById('appr-ready');
+  hint.style.display = (locReady && gsReady) ? 'flex' : 'none';
+}
+
+function _setILSPanel(type, alive, dev) {
+  const dot    = document.getElementById(type + '-dot');
+  const status = document.getElementById(type + '-status');
+  const needle = document.getElementById(type + '-needle');
+  const devEl  = document.getElementById(type + '-dev');
+  const label  = type === 'loc' ? 'Localizer' : 'Glideslope';
+
+  if (!alive) {
+    const grey = '#5A5448';
+    dot.style.background    = grey;
+    status.style.color      = grey;
+    status.textContent      = 'No Signal';
+    needle.style.background = grey;
+    needle.style.left       = '50%';
+    devEl.style.color       = grey;
+    devEl.textContent       = '—';
+    return false;
+  }
+
+  const abs = Math.abs(dev);
+  let color, txt, ready = false;
+
+  if (abs < ILS_READY) {
+    color = '#3A8A3A'; txt = label + ' Ready ✓'; ready = true;
+  } else if (abs < ILS_INTERCEPT) {
+    color = '#1D9E75'; txt = 'Intercepting';
+  } else {
+    color = '#C49228'; txt = 'Capturing';
+  }
+
+  dot.style.background    = color;
+  status.style.color      = color;
+  status.textContent      = txt;
+  needle.style.background = color;
+  devEl.style.color       = color;
+  devEl.textContent       = dev.toFixed(3);
+
+  // Move needle (clamp -1 to +1 on the track, mapped to 10%–90%)
+  const pct = 50 + Math.max(-1, Math.min(1, dev / (ILS_INTERCEPT * 2.5))) * 40;
+  needle.style.left = pct + '%';
+
+  return ready;
+}
+
+// ── Notification system ───────────────────────────────────────────────────────
+let _nid = 0;
+function notify(title, body, type = 'info', duration = 6000) {
+  const id = ++_nid;
+  const stack = document.getElementById('notif-stack');
+  const el = document.createElement('div');
+  el.className = `notif n-${type}`;
+  el.id = `notif-${id}`;
+  el.innerHTML = `
+    <div class="notif-hd">
+      <span class="notif-title">${title}</span>
+      <button class="notif-x" onclick="closeNotif(${id})">×</button>
+    </div>
+    <div class="notif-body">${body}</div>
+    <div class="notif-prog"><div class="notif-prog-bar" style="animation-duration:${duration}ms"></div></div>`;
+  stack.appendChild(el);
+  setTimeout(() => closeNotif(id), duration);
+}
+function closeNotif(id) {
+  const el = document.getElementById(`notif-${id}`);
+  if (!el) return;
+  el.style.animation = 'nfOut .2s ease forwards';
+  setTimeout(() => el.remove(), 220);
+}
+
+// ── Quick Set ─────────────────────────────────────────────────────────────────
+function applyQS(alt, vs, spd, label) {
+  let sent = [];
+
+  if (alt !== '' && alt !== null && alt !== undefined) {
+    const v = Number(alt);
+    sendCmd('ap.alt', v);
+    document.getElementById('ap-alt').value = v;  // optimistic update
+    sent.push(`ALT ${v} ft`);
+  }
+  if (vs !== '' && vs !== null && vs !== undefined) {
+    const v = Number(vs);
+    sendCmd('ap.vs', v);
+    document.getElementById('ap-vs').value = v;   // optimistic update
+    sent.push(`V/S ${v} fpm`);
+  }
+  if (spd !== '' && spd !== null && spd !== undefined) {
+    const v = Number(spd);
+    sendCmd('ap.spd', v);
+    document.getElementById('ap-spd').value = v;  // optimistic update
+    sent.push(`SPD ${v} kts`);
+  }
+
+  if (sent.length === 0) {
+    notify('Quick Set', 'Isi minimal satu field dulu.', 'info', 3000);
+    return;
+  }
+
+  const connNote = isConnected ? '' : '\n⚠ Tidak terhubung ke IF';
+  notify(`AP ${label} Set`, sent.join('\n') + connNote, 'add', 4000);
+}
+function applyQS1() {
+  applyQS(
+    document.getElementById('qs1-alt').value,
+    document.getElementById('qs1-vs').value,
+    null, 'ALT & V/S'
+  );
+}
+function applyQS2() {
+  applyQS(
+    document.getElementById('qs2-alt').value,
+    document.getElementById('qs2-vs').value,
+    document.getElementById('qs2-spd').value,
+    'ALT · V/S · SPD'
+  );
+}
+
+// Enter key on Quick Set inputs
+['qs1-alt','qs1-vs'].forEach(id => {
+  document.getElementById(id)?.addEventListener('keydown', e => { if (e.key === 'Enter') applyQS1(); });
+});
+['qs2-alt','qs2-vs','qs2-spd'].forEach(id => {
+  document.getElementById(id)?.addEventListener('keydown', e => { if (e.key === 'Enter') applyQS2(); });
+});
+
+// ── Automation rules ──────────────────────────────────────────────────────────
+let _rules = [];
+let _ruleId = 0;
+
+function addRule() {
+  const dist = document.getElementById('ra-dist').value;
+  const alt  = document.getElementById('ra-alt').value;
+  const vs   = document.getElementById('ra-vs').value;
+  const spd  = document.getElementById('ra-spd').value;
+
+  if (!dist || Number(dist) <= 0) { notify('Automation', 'DIST (NM) wajib diisi.', 'info', 3000); return; }
+  // AP fields boleh kosong semua → jadi notify-only rule
+
+  const rule = { id: ++_ruleId, dist: Number(dist), alt, vs, spd, status: 'armed' };
+  _rules.push(rule);
+  _rules.sort((a, b) => b.dist - a.dist);
+
+  ['ra-dist','ra-alt','ra-vs','ra-spd'].forEach(id => document.getElementById(id).value = '');
+
+  const isNotify = !alt && !vs && !spd;
+  let parts = [`Trigger: ≤ ${dist} NM`];
+  if (alt) parts.push(`ALT → ${alt} ft`);
+  if (vs)  parts.push(`V/S → ${vs} fpm`);
+  if (spd) parts.push(`SPD → ${spd} kts`);
+  if (isNotify) parts.push('📢 Notifikasi saja, AP tidak diubah');
+  notify('Rule Added ✓', parts.join('\n'), 'add', 5000);
+
+  renderRules();
+}
+
+function deleteRule(id) {
+  _rules = _rules.filter(r => r.id !== id);
+  renderRules();
+}
+
+function fireRule(rule) {
+  rule.status = 'fired';
+  const isNotify = !rule.alt && !rule.vs && !rule.spd;
+
+  if (!isNotify) {
+    if (rule.alt) { sendCmd('ap.alt', Number(rule.alt)); document.getElementById('ap-alt').value = rule.alt; }
+    if (rule.vs)  { sendCmd('ap.vs',  Number(rule.vs));  document.getElementById('ap-vs').value  = rule.vs;  }
+    if (rule.spd) { sendCmd('ap.spd', Number(rule.spd)); document.getElementById('ap-spd').value = rule.spd; }
+  }
+
+  let title, type, dur;
+  let parts = [`≤ ${rule.dist} NM ke tujuan`];
+
+  if (isNotify) {
+    title = '⚠ NYALAKAN APPR !';
+    type  = 'alert';
+    dur   = 15000;  // 15 detik biar kenotice
+    parts.push('Aktifkan APPR MODE sekarang');
+    parts.push('Cek LOC & GS sudah Ready ✓');
+  } else {
+    title = '🔥 Rule Fired!';
+    type  = 'fire';
+    dur   = 8000;
+    if (rule.alt) parts.push(`ALT → ${rule.alt} ft`);
+    if (rule.vs)  parts.push(`V/S → ${rule.vs} fpm`);
+    if (rule.spd) parts.push(`SPD → ${rule.spd} kts`);
+    if (!isConnected) parts.push('⚠ Tidak terhubung ke IF');
+  }
+
+  notify(title, parts.join('\n'), type, dur);
+  renderRules();
+}
+
+function checkRules(dist) {
+  _rules.forEach(rule => {
+    if (rule.status === 'armed' && dist <= rule.dist) fireRule(rule);
+  });
+}
+
+function renderRules() {
+  const list = document.getElementById('rule-list');
+  if (_rules.length === 0) {
+    list.innerHTML = '<div class="rule-empty" id="rule-empty">Belum ada rule. Tambah di atas.<br><span style="font-size:8px;color:#3A3530">Tip: kosongkan ALT/V/S/SPD → notifikasi-only (cocok untuk APPR reminder)</span></div>';
+    return;
+  }
+  list.innerHTML = _rules.map(r => {
+    const isNotify = !r.alt && !r.vs && !r.spd;
+    let vals;
+    if (isNotify) {
+      vals = '<span style="color:#E07070">📢 Notif only</span>';
+    } else {
+      const v = [];
+      if (r.alt) v.push(`ALT ${r.alt}ft`);
+      if (r.vs)  v.push(`V/S ${r.vs}fpm`);
+      if (r.spd) v.push(`SPD ${r.spd}kts`);
+      vals = v.join(' | ');
+    }
+    return `<div class="rule-item">
+      <div class="rule-info">
+        <span class="rule-dist">≤ ${r.dist} NM</span>
+        <span class="rule-vals"> → ${vals}</span>
+      </div>
+      <span class="rule-badge ${r.status}">${r.status.toUpperCase()}</span>
+      ${r.status === 'armed' ? `<button class="rule-del" onclick="deleteRule(${r.id})">×</button>` : ''}
+    </div>`;
+  }).join('');
+}
+</script>
+<!-- ── MAP LIGHTBOX ──────────────────────────────────────────────── -->
+<div id="map-lb" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(10,8,6,0.97);flex-direction:column">
+<style>
+#map-lb { font-family: system-ui, sans-serif; }
+.mlb-hd { padding:10px 16px; background:#1A1814; border-bottom:1px solid #2A2820; display:flex; align-items:center; gap:12px; flex-shrink:0; }
+.mlb-title { font-size:11px; font-weight:700; letter-spacing:.2em; color:#C49228; text-transform:uppercase; }
+.mlb-meta { font-size:9px; color:#5A5448; font-family:monospace; }
+.mlb-x { background:none; border:none; color:#6A6458; cursor:pointer; font-size:22px; line-height:1; margin-left:auto; }
+.mlb-x:hover { color:#F2EDE0; }
+.mlb-body { flex:1; display:flex; overflow:hidden; min-height:0; }
+.mlb-left { width:22%; background:#111009; border-right:1px solid #2A2820; padding:10px 12px; overflow-y:auto; display:flex; flex-direction:column; gap:6px; flex-shrink:0; }
+#map-el { flex:1; }
+.ms { font-size:8px; letter-spacing:.18em; font-weight:700; color:#C49228; text-transform:uppercase; margin-bottom:5px; }
+.mr { display:flex; justify-content:space-between; align-items:baseline; padding:2px 0; }
+.ml { font-size:9px; color:#5A5448; letter-spacing:.06em; text-transform:uppercase; }
+.mv { font-family:monospace; font-size:11px; color:#F2EDE0; font-weight:700; }
+.mv.g { color:#7BC44A; }
+.msep { height:1px; background:#1E1C18; margin:4px 0; }
+.mai { display:flex; align-items:center; gap:4px; margin-bottom:4px; }
+.mal { font-size:8px; color:#5A5448; text-transform:uppercase; min-width:28px; }
+.mav { background:#1A1814; border:1px solid #2A2820; border-radius:3px; padding:2px 5px; font-family:monospace; font-size:11px; color:#F2EDE0; text-align:right; flex:1; width:60px; -moz-appearance:textfield; }
+.mav::-webkit-inner-spin-button,.mav::-webkit-outer-spin-button{-webkit-appearance:none}
+.mav:focus { outline:none; border-color:#C49228; }
+.mau { font-size:8px; color:#3A3530; min-width:20px; }
+.map-apply { width:100%; background:#C49228; color:#1A1814; border:none; border-radius:4px; padding:5px; font-size:8px; font-weight:700; letter-spacing:.12em; cursor:pointer; margin-top:2px; text-transform:uppercase; }
+.map-apply:hover { background:#D4A430; }
+.map-follow-btn { position:absolute; top:10px; right:10px; z-index:1000; background:#1A1814; border:1px solid #C49228; color:#C49228; border-radius:5px; padding:4px 9px; font-size:9px; font-weight:700; cursor:pointer; letter-spacing:.1em; }
+.map-follow-btn.off { border-color:#3A3530; color:#5A5448; }
+</style>
+  <div class="mlb-hd">
+    <span class="mlb-title">⊞ Flight Map</span>
+    <span class="mlb-meta" id="mlb-meta">—</span>
+    <button class="mlb-x" onclick="closeMap()">×</button>
+  </div>
+  <div class="mlb-body">
+    <!-- LEFT: flight data 22% -->
+    <div class="mlb-left">
+      <!-- Instruments -->
+      <div>
+        <div class="ms">Instruments</div>
+        <div class="mr"><span class="ml">ALT</span><span class="mv g" id="m-alt">──</span></div>
+        <div class="mr"><span class="ml">IAS</span><span class="mv g" id="m-spd">──</span></div>
+        <div class="mr"><span class="ml">GS</span><span class="mv g"  id="m-gs">──</span></div>
+        <div class="mr"><span class="ml">VS</span><span class="mv g"  id="m-vs">──</span></div>
+        <div class="mr"><span class="ml">HDG</span><span class="mv g" id="m-hdg">──</span></div>
+        <div class="mr"><span class="ml">MACH</span><span class="mv g" id="m-mach">──</span></div>
+      </div>
+      <div class="msep"></div>
+      <!-- AP editable -->
+      <div>
+        <div class="ms">Autopilot</div>
+        <div class="mai"><span class="mal">ALT</span><input class="mav" id="ma-alt" type="number" step="100"><span class="mau">ft</span></div>
+        <div class="mai"><span class="mal">V/S</span><input class="mav" id="ma-vs"  type="number" step="100"><span class="mau">fpm</span></div>
+        <div class="mai"><span class="mal">SPD</span><input class="mav" id="ma-spd" type="number" step="1"><span class="mau">kts</span></div>
+        <div class="mai"><span class="mal">HDG</span><input class="mav" id="ma-hdg" type="number" step="1" min="0" max="359"><span class="mau">°</span></div>
+        <button class="map-apply" onclick="applyMapAP()">→ APPLY ALL</button>
+      </div>
+      <div class="msep"></div>
+      <!-- Route -->
+      <div>
+        <div class="ms">Route</div>
+        <div class="mr"><span class="ml">Dest</span><span class="mv" id="m-dest">──</span></div>
+        <div class="mr"><span class="ml">Dist</span><span class="mv g" id="m-ddist">──</span></div>
+        <div class="mr"><span class="ml">ETE</span><span class="mv g" id="m-dete">──</span></div>
+        <div class="mr"><span class="ml">Next</span><span class="mv" id="m-nwpt">──</span></div>
+        <div class="mr"><span class="ml">↓NM</span><span class="mv g" id="m-ndist">──</span></div>
+      </div>
+      <div class="msep"></div>
+      <!-- ILS -->
+      <div>
+        <div class="ms">ILS / NAV1</div>
+        <div class="mr"><span class="ml">LOC</span><span class="mv" id="m-loc">──</span></div>
+        <div class="mr"><span class="ml">G/S</span><span class="mv" id="m-gs2">──</span></div>
+      </div>
+      <div class="msep"></div>
+      <!-- Trail ctrl -->
+      <div>
+        <div class="ms">Trail</div>
+        <div class="mr">
+          <span class="ml" id="m-trail-cnt">0 pts</span>
+          <button onclick="clearTrail()" style="background:none;border:1px solid #3A3530;border-radius:3px;padding:2px 6px;font-size:8px;color:#5A5448;cursor:pointer">Clear</button>
+        </div>
+      </div>
+      <div class="msep"></div>
+      <!-- TOD/TOC Calculator — MURNI LOKAL, tidak kirim apapun ke IF -->
+      <div>
+        <div class="ms">TOD / TOC Calc <span style="color:#3A3530;font-weight:400;text-transform:none;letter-spacing:0">(offline)</span></div>
+        <div class="mai"><span class="mal">Crz FL</span><input class="mav" id="tc-fl" type="number" step="10" placeholder="350"><span class="mau">FL</span></div>
+        <div class="mai"><span class="mal">Dest Elev</span><input class="mav" id="tc-elev" type="number" step="100" value="0"><span class="mau">ft</span></div>
+        <div class="mai"><span class="mal">Climb R/C</span><input class="mav" id="tc-climb" type="number" step="100" value="2000"><span class="mau">fpm</span></div>
+        <div class="mai"><span class="mal">Climb GS</span><input class="mav" id="tc-climbgs" type="number" step="10" value="250"><span class="mau">kts</span></div>
+        <div class="mai"><span class="mal">Buffer</span><input class="mav" id="tc-buffer" type="number" step="5" value="10"><span class="mau">NM</span></div>
+        <button class="map-apply" onclick="calcTodToc()" style="margin-top:2px">HITUNG</button>
+        <div id="tc-result" style="margin-top:6px;font-family:'Courier New',monospace;font-size:10px;color:#7BC44A;line-height:1.6;display:none"></div>
+      </div>
+    </div>
+    <!-- RIGHT: Map 78% -->
+    <div style="flex:1;position:relative">
+      <div id="map-el" style="width:100%;height:100%;"></div>
+      <button class="map-follow-btn" id="map-follow-btn" onclick="toggleFollow()">⊙ Follow</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Map state ─────────────────────────────────────────────────────────────────
+let _map = null, _marker = null, _trailLine = null;
+let _mapOpen = false, _mapFollow = true;
+let _mapTickN = 0;
+const TRAIL_MAX = 500;
+const _trail    = [];
+
+// ── Flight plan route (dari aircraft/0/flightplan/coordinates+route) ──────────
+let _routeWaypoints = [];   // [{name, lat, lng}, ...]
+let _routeLine = null;
+let _routeMarkers = [];
+
+// ── TOD/TOC Calculator — MURNI OFFLINE, tidak pernah sendCmd ke IF ─────────────
+// TOD pakai aturan 3:1 (standar aviasi): NM = (altitude_to_lose_ft / 1000) × 3
+// TOC pakai time-based: waktu = altitude_to_gain / climb_rate, jarak = GS × waktu
+function calcTodToc() {
+  const fl      = parseFloat(document.getElementById('tc-fl').value);
+  const elev    = parseFloat(document.getElementById('tc-elev').value) || 0;
+  const climbR  = parseFloat(document.getElementById('tc-climb').value) || 2000;
+  const climbGS = parseFloat(document.getElementById('tc-climbgs').value) || 250;
+  const buffer  = parseFloat(document.getElementById('tc-buffer').value) || 10;
+  const box = document.getElementById('tc-result');
+
+  if (!fl || fl <= 0) {
+    box.style.display = 'block';
+    box.style.color = '#E07070';
+    box.textContent = 'Isi Cruise FL dulu (misal 350 untuk FL350)';
+    return;
+  }
+
+  const cruiseAlt = fl * 100;   // FL350 → 35000 ft
+  const curAlt = (typeof _pfd !== 'undefined' && _pfd.alt) ? _pfd.alt : 0;
+
+  // ── TOD: 3:1 rule + buffer ──
+  const altToLose = cruiseAlt - elev;
+  const todDist = Math.round((altToLose / 1000) * 3 + buffer);
+
+  // ── TOC: time-based pakai climb rate & climb speed asumsi ──
+  const altToGain = curAlt > 0 ? Math.max(0, cruiseAlt - curAlt) : cruiseAlt;
+  const climbMin  = altToGain / climbR;
+  const tocDist   = Math.round(climbGS * (climbMin / 60));
+
+  box.style.display = 'block';
+  box.style.color = '#7BC44A';
+  box.innerHTML =
+    `TOC: mulai level-off setelah\n` +
+    `  ≈ ${tocDist} NM dari takeoff\n` +
+    `  (≈ ${climbMin.toFixed(0)} menit climb)\n\n` +
+    `TOD: mulai descent saat\n` +
+    `  ≈ ${todDist} NM before destination\n` +
+    `  (3:1 rule + ${buffer} NM buffer)`;
+}
+
+function drawRouteOnMap() {
+  if (!_map || !_routeWaypoints.length) return;
+
+  // Bersihkan rute lama sebelum gambar ulang
+  if (_routeLine) { _map.removeLayer(_routeLine); _routeLine = null; }
+  _routeMarkers.forEach(m => _map.removeLayer(m));
+  _routeMarkers = [];
+
+  const latlngs = _routeWaypoints.map(w => [w.lat, w.lng]);
+  _routeLine = L.polyline(latlngs, {
+    color: '#5090D0', weight: 2, opacity: 0.65, dashArray: '6 6'
+  }).addTo(_map);
+
+  _routeWaypoints.forEach((w, i) => {
+    const isEndpoint = (i === 0 || i === _routeWaypoints.length - 1);
+    const marker = L.circleMarker([w.lat, w.lng], {
+      radius: isEndpoint ? 6 : 4,
+      color: isEndpoint ? '#7BC44A' : '#5090D0',
+      fillColor: isEndpoint ? '#7BC44A' : '#5090D0',
+      fillOpacity: 0.9, weight: 1.5,
+    }).addTo(_map);
+    marker.bindTooltip(w.name, { permanent: false, direction: 'top', className: 'wpt-tooltip' });
+    _routeMarkers.push(marker);
+  });
+}
+
+// Aircraft icon (rotated per heading)
+function _makeIcon(hdg) {
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;transform:rotate(${hdg}deg);font-size:22px;filter:drop-shadow(0 0 3px #C49228)">✈</div>`,
+    iconSize: [28, 28], iconAnchor: [14, 14]
+  });
+}
+
+function openMap() {
+  const lb = document.getElementById('map-lb');
+  lb.style.display = 'flex';
+  _mapOpen = true;
+
+  if (!_map) {
+    // Init Leaflet (small delay so div is rendered)
+    setTimeout(() => {
+      _map = L.map('map-el', { zoomControl: true }).setView([1.36, 103.99], 8);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 17
+      }).addTo(_map);
+      _trailLine = L.polyline([], { color: '#C49228', weight: 2, opacity: 0.7 }).addTo(_map);
+      // If we already have position data, center immediately
+      if (_ilsSt && window._lastLat !== undefined) {
+        _map.setView([window._lastLat, window._lastLng], 10);
+        _marker = L.marker([window._lastLat, window._lastLng], { icon: _makeIcon(window._lastHdg || 0) }).addTo(_map);
+      }
+      // Kalau data rute udah sampai duluan sebelum map dibuka, gambar sekarang
+      if (_routeWaypoints.length) drawRouteOnMap();
+    }, 50);
+  } else if (_routeWaypoints.length) {
+    drawRouteOnMap();
+  }
+
+  // Sync AP inputs from current AP box values
+  document.getElementById('ma-alt').value = document.getElementById('ap-alt').value;
+  document.getElementById('ma-vs').value  = document.getElementById('ap-vs').value;
+  document.getElementById('ma-spd').value = document.getElementById('ap-spd').value;
+  document.getElementById('ma-hdg').value = document.getElementById('ap-hdg').value;
+}
+
+function closeMap() {
+  document.getElementById('map-lb').style.display = 'none';
+  _mapOpen = false;
+}
+
+function toggleFollow() {
+  _mapFollow = !_mapFollow;
+  const btn = document.getElementById('map-follow-btn');
+  btn.textContent = _mapFollow ? '⊙ Follow' : '⊙ Free';
+  btn.className   = _mapFollow ? 'map-follow-btn' : 'map-follow-btn off';
+}
+
+function clearTrail() {
+  _trail.length = 0;
+  if (_trailLine) _trailLine.setLatLngs([]);
+  document.getElementById('m-trail-cnt').textContent = '0 pts';
+}
+
+// Called from updateInstruments every 4th tick (≈1Hz)
+function updateMapData(d) {
+  // Position
+  if (d.lat !== undefined && d.lng !== undefined) {
+    window._lastLat = d.lat;
+    window._lastLng = d.lng;
+    window._lastHdg = d.hdg || 0;
+
+    // Update trail
+    _trail.push([d.lat, d.lng]);
+    if (_trail.length > TRAIL_MAX) _trail.shift();
+    document.getElementById('m-trail-cnt').textContent = _trail.length + ' pts';
+
+    if (_map) {
+      // Update marker
+      if (!_marker) {
+        _marker = L.marker([d.lat, d.lng], { icon: _makeIcon(d.hdg || 0) }).addTo(_map);
+      } else {
+        _marker.setLatLng([d.lat, d.lng]);
+        _marker.setIcon(_makeIcon(d.hdg || 0));
+      }
+      // Update trail line
+      _trailLine.setLatLngs(_trail);
+      // Follow
+      if (_mapFollow) _map.setView([d.lat, d.lng]);
+    }
+  }
+
+  // Left panel instruments
+  const _u = (id, v, unit) => { const el = document.getElementById(id); if(el && v !== undefined) el.textContent = v + (unit || ''); };
+  _u('m-alt',  d.alt,  ' ft');
+  _u('m-spd',  d.spd,  ' kts');
+  _u('m-gs',   d.gs,   ' kts');
+  _u('m-vs',   d.vs,   ' fpm');
+  _u('m-hdg',  d.hdg,  '°');
+  _u('m-mach', d.mach, '');
+  // Route
+  _u('m-ddist', d.dest_dist,    ' NM');
+  _u('m-dete',  d.dest_ete,     '');
+  _u('m-nwpt',  d.next_wpt_name,'');
+  _u('m-ndist', d.next_wpt_dist,' NM');
+  // ILS
+  const locEl = document.getElementById('m-loc');
+  const gsEl  = document.getElementById('m-gs2');
+  if (locEl && d.loc_alive !== undefined) {
+    if (!d.loc_alive) { locEl.textContent = 'No Signal'; locEl.style.color = '#5A5448'; }
+    else { const abs = Math.abs(d.loc_dev||0); locEl.style.color = abs < 0.08 ? '#7BC44A' : abs < 0.4 ? '#1D9E75' : '#C49228'; locEl.textContent = abs < 0.08 ? 'Ready ✓' : abs < 0.4 ? 'Intercepting' : 'Capturing'; }
+  }
+  if (gsEl && d.gs_alive !== undefined) {
+    if (!d.gs_alive) { gsEl.textContent = 'No Signal'; gsEl.style.color = '#5A5448'; }
+    else { const abs = Math.abs(d.gs_dev||0); gsEl.style.color = abs < 0.08 ? '#7BC44A' : abs < 0.4 ? '#1D9E75' : '#C49228'; gsEl.textContent = abs < 0.08 ? 'Ready ✓' : abs < 0.4 ? 'Intercepting' : 'Capturing'; }
+  }
+  // AP sync (only if not focused)
+  const syncAP = (mapId, val) => { const el = document.getElementById(mapId); if (el && document.activeElement !== el) el.value = val; };
+  if (d.ap_alt !== undefined) syncAP('ma-alt', d.ap_alt);
+  if (d.ap_vs  !== undefined) syncAP('ma-vs',  d.ap_vs);
+  if (d.ap_spd !== undefined) syncAP('ma-spd', d.ap_spd);
+  if (d.ap_hdg !== undefined) syncAP('ma-hdg', d.ap_hdg);
+  // Meta bar
+  const meta = document.getElementById('mlb-meta');
+  if (meta && d.dest_dist !== undefined) meta.textContent = `${d.dest_dist} NM to dest · trail ${_trail.length}/${TRAIL_MAX}`;
+}
+
+function applyMapAP() {
+  const alt = document.getElementById('ma-alt').value;
+  const vs  = document.getElementById('ma-vs').value;
+  const spd = document.getElementById('ma-spd').value;
+  const hdg = document.getElementById('ma-hdg').value;
+  let sent = [];
+  if (alt) { sendCmd('ap.alt', Number(alt)); document.getElementById('ap-alt').value = alt; sent.push('ALT '+alt+' ft'); }
+  if (vs)  { sendCmd('ap.vs',  Number(vs));  document.getElementById('ap-vs').value  = vs;  sent.push('V/S '+vs+' fpm'); }
+  if (spd) { sendCmd('ap.spd', Number(spd)); document.getElementById('ap-spd').value = spd; sent.push('SPD '+spd+' kts'); }
+  if (hdg) { sendCmd('ap.hdg', Number(hdg)); document.getElementById('ap-hdg').value = hdg; sent.push('HDG '+hdg+'°'); }
+  if (sent.length) notify('AP Set (Map)', sent.join('\n'), 'add', 3000);
+}
+
+// ESC to close map
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && _mapOpen) closeMap(); });
+</script>
+<!-- ── PFD / ND LIGHTBOX ──────────────────────────────────────────── -->
+<div id="pfd-lb" style="display:none;position:fixed;inset:0;z-index:2001;background:rgba(4,7,14,0.97);flex-direction:column">
+  <div style="padding:8px 16px;background:#0a0e18;border-bottom:1px solid #1a2230;display:flex;align-items:center;gap:10px;flex-shrink:0">
+    <span style="font-size:10px;font-weight:700;letter-spacing:.2em;color:#C49228;text-transform:uppercase">◈ PFD / ND</span>
+    <span id="pfd-hd-info" style="font-size:9px;color:#445;font-family:monospace">—</span>
+    <button onclick="closePFD()" style="background:none;border:none;color:#556;cursor:pointer;font-size:22px;line-height:1;margin-left:auto">×</button>
+  </div>
+  <div style="flex:1;display:flex;overflow:hidden;justify-content:center;align-items:center;gap:10px;padding:10px">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+      <span style="font-size:8px;letter-spacing:.18em;color:#445;text-transform:uppercase">Primary Flight Display</span>
+      <canvas id="pfd-canvas-full" width="300" height="450" style="border-radius:6px"></canvas>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+      <span style="font-size:8px;letter-spacing:.18em;color:#445;text-transform:uppercase">Navigation Display</span>
+      <canvas id="nd-canvas-full" width="300" height="300" style="border-radius:6px"></canvas>
+      <div style="background:#060a10;border-radius:6px;padding:6px 12px;width:276px;box-sizing:border-box">
+        <div style="display:flex;justify-content:space-between;font-size:10px;font-family:monospace;color:#7BC44A">
+          <span id="pfd-gs-lbl">GS — kts</span><span id="pfd-mach-lbl">M —</span><span id="pfd-dist-lbl">— NM</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── PFD MINI FLOATING WIDGET ──────────────────────────────────── -->
+<div id="pfd-mini-widget" style="display:none;position:fixed;bottom:72px;right:20px;z-index:1800;background:rgba(4,7,14,0.97);border-radius:8px;border:1px solid #2a3a4a;padding:6px">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:0 2px 5px;border-bottom:1px solid #1a2230;margin-bottom:5px">
+    <span style="font-size:8px;color:#556;letter-spacing:.15em;font-weight:700">PFD · ND</span>
+    <button onclick="togglePFDMini()" style="background:none;border:none;color:#556;cursor:pointer;font-size:15px;line-height:1;padding:0 2px">×</button>
+  </div>
+  <div style="display:flex;gap:5px">
+    <canvas id="pfd-canvas-mini" width="155" height="220" style="border-radius:4px"></canvas>
+    <canvas id="nd-canvas-mini"  width="155" height="220" style="border-radius:4px"></canvas>
+  </div>
+</div>
+
+<script>
+// ── W / S KEYBOARD — VS CONTROL ──────────────────────────────────────
+let _vsKH=false, _vsHT, _vsRI;
+document.addEventListener('keydown', e => {
+  if (['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) return;
+  if (_vsKH) return;
+  const up = e.key==='w'||e.key==='W', dn = e.key==='s'||e.key==='S';
+  if (!up && !dn) return;
+  e.preventDefault(); _vsKH=true;
+  const dir = up?1:-1;
+  _adjVS(dir*50);
+  _vsHT = setTimeout(()=>{ _vsRI=setInterval(()=>_adjVS(dir*100),400); }, 350);
+});
+document.addEventListener('keyup', e=>{
+  if ('wWsS'.includes(e.key)) { _vsKH=false; clearTimeout(_vsHT); clearInterval(_vsRI); }
+});
+function _adjVS(delta) {
+  const el = document.getElementById('ap-vs');
+  const nv = Math.round(((+el.value||0)+delta)/50)*50;
+  el.value = nv; sendCmd('ap.vs', nv);
+  toast(`W/S → V/S ${nv>=0?'+':''}${nv} fpm`);
+}
+
+// ── PFD / ND STATE + DERIVED PITCH & BANK ───────────────────────────
+const _pfd = {
+  alt:0,spd:0,hdg:0,vs:0,gs:0,mach:0,
+  ap_alt:0,ap_hdg:0,ap_spd:0,ap_vs:0,
+  ap_on:false,alt_on:false,spd_on:false,hdg_on:false,vs_on:false,appr_on:false,
+  pitch:0,bank:0,_phd:null,_hr:0,
+  dest_dist:0,next_wpt_name:'---',next_wpt_dist:0,
+};
+let _pfdOpen=false, _pfdMiniOpen=false;
+const _R = Math.PI/180; // deg→rad
+
+function _pfdSync(d) {
+  if (d.alt!==undefined)           _pfd.alt=d.alt;
+  if (d.spd!==undefined)           _pfd.spd=d.spd;
+  if (d.gs!==undefined)            _pfd.gs=d.gs;
+  if (d.mach!==undefined)          _pfd.mach=d.mach;
+  if (d.vs!==undefined)            _pfd.vs=d.vs;
+  if (d.ap_alt!==undefined)        _pfd.ap_alt=d.ap_alt;
+  if (d.ap_hdg!==undefined)        _pfd.ap_hdg=d.ap_hdg;
+  if (d.ap_spd!==undefined)        _pfd.ap_spd=d.ap_spd;
+  if (d.ap_vs!==undefined)         _pfd.ap_vs=d.ap_vs;
+  if (d.ap_active!==undefined)     _pfd.ap_on=d.ap_active;
+  if (d.ap_alt_on!==undefined)     _pfd.alt_on=d.ap_alt_on;
+  if (d.ap_spd_on!==undefined)     _pfd.spd_on=d.ap_spd_on;
+  if (d.ap_hdg_on!==undefined)     _pfd.hdg_on=d.ap_hdg_on;
+  if (d.ap_vs_on!==undefined)      _pfd.vs_on=d.ap_vs_on;
+  if (d.ap_appr_on!==undefined)    _pfd.appr_on=d.ap_appr_on;
+  if (d.dest_dist!==undefined)     _pfd.dest_dist=d.dest_dist;
+  if (d.next_wpt_name!==undefined) _pfd.next_wpt_name=d.next_wpt_name;
+  if (d.next_wpt_dist!==undefined) _pfd.next_wpt_dist=d.next_wpt_dist;
+
+  // ── Pitch: gunakan data API real jika tersedia (aircraft/0/pitch, radians→deg)
+  if (d.pitch !== undefined) {
+    _pfd.pitch = d.pitch;   // data real dari IF, sudah dalam degrees dari server
+  } else {
+    // Fallback: derive dari VS + IAS
+    const vm=_pfd.vs*0.00508, im=_pfd.spd*0.5144;
+    if (im>20) _pfd.pitch = Math.asin(Math.max(-1,Math.min(1,vm/im)))/_R;
+  }
+
+  // ── Bank: gunakan data API real jika tersedia (aircraft/0/bank, radians→deg)
+  if (d.bank !== undefined) {
+    _pfd.bank = d.bank;     // data real dari IF, sudah dalam degrees dari server
+  } else if (d.hdg !== undefined) {
+    // Fallback: derive dari heading change rate
+    const nh=d.hdg; _pfd.hdg=nh;
+    if (_pfd._phd!==null) {
+      let dh=nh-_pfd._phd; if(dh>180)dh-=360; if(dh<-180)dh+=360;
+      _pfd._hr=_pfd._hr*0.6+(dh/0.25)*0.4;
+      const tm=(_pfd.gs||_pfd.spd)*0.5144;
+      _pfd.bank = tm>20 ? Math.atan2(tm*_pfd._hr*_R,9.81)/_R : 0;
+    }
+    _pfd._phd=nh;
+  }
+
+  if (_pfdOpen||_pfdMiniOpen) _renderAll();
+}
+
+function openPFD()  { document.getElementById('pfd-lb').style.display='flex'; _pfdOpen=true; _renderAll(); }
+function closePFD() { document.getElementById('pfd-lb').style.display='none'; _pfdOpen=false; }
+function togglePFDMini() {
+  _pfdMiniOpen=!_pfdMiniOpen;
+  document.getElementById('pfd-mini-widget').style.display=_pfdMiniOpen?'block':'none';
+  document.getElementById('btn-pfd-mini').style.borderColor=_pfdMiniOpen?'#C49228':'#D5CDBA';
+  document.getElementById('btn-pfd-mini').style.color=_pfdMiniOpen?'#C49228':'#8B6820';
+  if (_pfdMiniOpen) _renderAll();
+}
+document.addEventListener('keydown', e=>{ if(e.key==='Escape'&&_pfdOpen) closePFD(); });
+
+// ── RENDERING HELPERS ─────────────────────────────────────────────────
+function _renderAll() {
+  if (_pfdOpen) {
+    _rPFD(document.getElementById('pfd-canvas-full'), false);
+    _rND(document.getElementById('nd-canvas-full'), false);
+    const el=document.getElementById('pfd-hd-info');
+    if(el) el.textContent=`HDG ${String(Math.round(_pfd.hdg)).padStart(3,'0')}° · ALT ${Math.round(_pfd.alt)}ft · IAS ${Math.round(_pfd.spd)}kts · GS ${Math.round(_pfd.gs)}kts`;
+    const gl=document.getElementById('pfd-gs-lbl'); if(gl) gl.textContent=`GS ${Math.round(_pfd.gs)} kts`;
+    const ml=document.getElementById('pfd-mach-lbl'); if(ml) ml.textContent=`M ${_pfd.mach.toFixed(2)}`;
+    const dl=document.getElementById('pfd-dist-lbl'); if(dl) dl.textContent=`${_pfd.dest_dist||'—'} NM`;
+  }
+  if (_pfdMiniOpen) {
+    _rPFD(document.getElementById('pfd-canvas-mini'), true);
+    _rND(document.getElementById('nd-canvas-mini'), true);
+  }
+}
+
+// ── PFD CANVAS RENDERER ───────────────────────────────────────────────
+function _rPFD(cv, mini) {
+  if (!cv) return;
+  const c=cv.getContext('2d'), W=cv.width, H=cv.height;
+  c.fillStyle='#060a12'; c.fillRect(0,0,W,H);
+  const cx=W/2, cy=H*.44, r=Math.min(W,H)*.35;
+  const {pitch,bank,spd,alt,vs,hdg}=_pfd;
+
+  // Mode bar
+  const mh=H*.058;
+  c.fillStyle='#000310'; c.fillRect(0,0,W,mh);
+  const modes=[
+    {l:'AP',a:_pfd.ap_on},{l:'ALT',a:_pfd.alt_on},{l:'SPD',a:_pfd.spd_on},
+    {l:'HDG',a:_pfd.hdg_on},{l:'V/S',a:_pfd.vs_on},{l:'APPR',a:_pfd.appr_on}
+  ];
+  c.font=`bold ${mini?7:9}px monospace`; c.textAlign='center';
+  modes.forEach((m,i)=>{
+    c.fillStyle=m.a?'#7BC44A':'#334466';
+    c.fillText(m.l, W*(.1+i*.16), mh*.82);
+  });
+
+  // Artificial horizon
+  c.save();
+  c.beginPath(); c.arc(cx,cy,r,0,Math.PI*2); c.clip();
+  c.translate(cx,cy);
+  c.rotate(-bank*_R);
+  const ppd=mini?3.8:4.5;
+  c.translate(0, pitch*ppd);
+  const s=r*4;
+  c.fillStyle='#0a2460'; c.fillRect(-s,-s*2,s*2,s*2); // sky
+  c.fillStyle='#4a2808'; c.fillRect(-s,0,s*2,s*2);     // ground
+  // Horizon gradient
+  const hg=c.createLinearGradient(0,-6,0,6);
+  hg.addColorStop(0,'#0a2460'); hg.addColorStop(.5,'#1a1a2a'); hg.addColorStop(1,'#4a2808');
+  c.fillStyle=hg; c.fillRect(-s,-6,s*2,12);
+  // Horizon line
+  c.strokeStyle='#FFFDE0'; c.lineWidth=1.5;
+  c.beginPath(); c.moveTo(-s,0); c.lineTo(s,0); c.stroke();
+  // Pitch ladder
+  for (let d=-30;d<=30;d+=5) {
+    if (!d) continue;
+    const yp=-d*ppd; const i10=Math.abs(d)%10===0;
+    const col=d>0?'#FFFDE0':'#B07030';
+    const hw=(i10?r*.48:r*.30);
+    c.strokeStyle=col; c.lineWidth=i10?1.2:.7;
+    c.beginPath(); c.moveTo(-hw,yp); c.lineTo(hw,yp); c.stroke();
+    // Wing-tip marks at 10° lines
+    if (i10) {
+      const tw=r*.08, th=r*.06;
+      c.beginPath(); c.moveTo(-hw,yp); c.lineTo(-hw,yp+(d>0?th:-th)); c.stroke();
+      c.beginPath(); c.moveTo(hw,yp);  c.lineTo(hw, yp+(d>0?th:-th)); c.stroke();
+      c.fillStyle=col; c.font=`bold ${mini?8:10}px monospace`;
+      c.textAlign='right'; c.fillText(Math.abs(d),-hw-4,yp+4);
+      c.textAlign='left';  c.fillText(Math.abs(d), hw+4, yp+4);
+    }
+  }
+  c.restore();
+  // AI border
+  c.beginPath(); c.arc(cx,cy,r,0,Math.PI*2);
+  c.strokeStyle='#2a3a4a'; c.lineWidth=1.5; c.stroke();
+
+  // Bank angle arc + ticks
+  const BR=r+13;
+  c.strokeStyle='white'; c.lineWidth=.9;
+  [10,20,30,45,60].forEach(a=>{
+    [-a,a].forEach(ang=>{
+      const rad=(ang-90)*_R;
+      const co=Math.cos(rad), si=Math.sin(rad);
+      const tl=Math.abs(ang)===30?10:6;
+      c.beginPath();
+      c.moveTo(cx+(BR-tl)*co,cy+(BR-tl)*si);
+      c.lineTo(cx+BR*co,cy+BR*si); c.stroke();
+    });
+  });
+  // 0° mark
+  c.lineWidth=1.5;
+  c.beginPath(); c.moveTo(cx,cy-BR-4); c.lineTo(cx,cy-BR+6); c.stroke();
+  // Bank pointer (moves with bank)
+  c.save();
+  c.translate(cx,cy); c.rotate(-bank*_R);
+  c.fillStyle='#C49228';
+  c.beginPath(); c.moveTo(0,-BR+2); c.lineTo(-5,-BR+12); c.lineTo(5,-BR+12); c.closePath(); c.fill();
+  c.restore();
+
+  // Aircraft symbol (fixed)
+  const hw=r*.38, vw=r*.12;
+  c.strokeStyle='#C49228'; c.lineWidth=r*.026; c.lineCap='round';
+  c.beginPath(); c.moveTo(cx-hw,cy); c.lineTo(cx-vw,cy); c.stroke();
+  c.beginPath(); c.moveTo(cx-vw,cy); c.lineTo(cx-vw,cy-vw*0.8); c.stroke();
+  c.beginPath(); c.moveTo(cx+vw,cy); c.lineTo(cx+hw,cy); c.stroke();
+  c.beginPath(); c.moveTo(cx+vw,cy); c.lineTo(cx+vw,cy-vw*0.8); c.stroke();
+  c.beginPath(); c.arc(cx,cy,r*.025,0,Math.PI*2); c.fillStyle='#C49228'; c.fill();
+
+  // Speed tape (left)
+  const tw=W*.16, tapy=cy-r, taph=r*2;
+  _drawTape(c,2,tapy,tw,taph,spd,_pfd.ap_spd,20,mini?2.2:3.2,false,mini);
+
+  // Altitude tape (right)
+  const ax=W-tw-16;
+  _drawTape(c,ax,tapy,tw,taph,alt,_pfd.ap_alt,500,mini?.017:.023,true,mini);
+
+  // VS indicator
+  _drawVSind(c,W-12,tapy,10,taph,vs,mini);
+
+  // Heading tape (bottom)
+  const hty=H*.86;
+  _drawHdgTape(c,cx-r,hty,r*2,H-hty-2,hdg,_pfd.ap_hdg,mini);
+
+  // GS / Mach strip below heading tape
+  c.fillStyle='#060a12'; c.fillRect(0,H*.95,W,H*.05);
+  c.fillStyle='#7BC44A'; c.font=`${mini?7:9}px monospace`; c.textAlign='left';
+  c.fillText(`GS ${Math.round(_pfd.gs)} / M${_pfd.mach.toFixed(2)}`, 8, H*.985);
+}
+
+function _drawTape(c,x,y,w,h,val,ref,step,pxpu,isAlt,mini){
+  c.fillStyle='rgba(0,3,12,.82)'; c.fillRect(x,y,w,h);
+  const cy2=y+h/2, base=Math.round(val/step)*step;
+  for(let v=base-step*10;v<=base+step*10;v+=step/2){
+    const vy=cy2-(v-val)*pxpu;
+    if(vy<y+1||vy>y+h-1) continue;
+    const ismaj=v%step===0;
+    const tw2=ismaj?w*.65:w*.38;
+    c.strokeStyle=ismaj?'white':'#5a7a8a'; c.lineWidth=ismaj?.8:.5;
+    if(isAlt){
+      c.beginPath(); c.moveTo(x,vy); c.lineTo(x+tw2,vy); c.stroke();
+      if(ismaj&&Math.abs(v)%200===0){
+        c.fillStyle='white'; c.font=`${mini?7:9}px monospace`; c.textAlign='left';
+        c.fillText(Math.abs(v),x+tw2+2,vy+3);
+      }
+    } else {
+      c.beginPath(); c.moveTo(x+w,vy); c.lineTo(x+w-tw2,vy); c.stroke();
+      if(ismaj&&v>30){
+        c.fillStyle='white'; c.font=`${mini?7:9}px monospace`; c.textAlign='right';
+        c.fillText(v,x+w-tw2-2,vy+3);
+      }
+    }
+  }
+  // Selected bug (magenta)
+  if(ref>0){
+    const by=cy2-(ref-val)*pxpu;
+    if(by>=y&&by<=y+h){
+      c.fillStyle='#CC44CC';
+      if(isAlt)c.fillRect(x,by-2,6,4); else c.fillRect(x+w-6,by-2,6,4);
+    }
+  }
+  // Current value box
+  const bh=mini?18:22, bw=isAlt?w*.85:w;
+  const bx=isAlt?x:x;
+  c.fillStyle='#000318'; c.strokeStyle='white'; c.lineWidth=1;
+  c.fillRect(bx,cy2-bh/2,bw,bh); c.strokeRect(bx,cy2-bh/2,bw,bh);
+  c.fillStyle='white'; c.font=`bold ${mini?10:13}px monospace`; c.textAlign='center';
+  c.fillText(Math.round(val),bx+bw/2,cy2+4);
+}
+
+function _drawVSind(c,x,y,w,h,vs,mini){
+  const max=3000;
+  c.fillStyle='rgba(0,3,12,.7)'; c.fillRect(x,y,w,h);
+  const cy2=y+h/2;
+  [500,1000,2000].forEach(v=>{
+    [1,-1].forEach(s=>{
+      const vy=cy2+s*(v/max)*(h/2-6);
+      c.strokeStyle='#446'; c.lineWidth=.5;
+      c.beginPath(); c.moveTo(x,vy); c.lineTo(x+w*.7,vy); c.stroke();
+    });
+  });
+  const ny=cy2-Math.max(-1,Math.min(1,vs/max))*(h/2-8);
+  c.fillStyle='#7BC44A';
+  c.beginPath(); c.arc(x+w/2,ny,mini?2:3,0,Math.PI*2); c.fill();
+}
+
+function _drawHdgTape(c,x,y,w,h,hdg,apHdg,mini){
+  c.fillStyle='rgba(0,3,12,.88)'; c.fillRect(x,y,w,h);
+  const cx2=x+w/2, DPX=w/60;
+  const cards={0:'N',90:'E',180:'S',270:'W'};
+  for(let d=-32;d<=32;d++){
+    const hv=((Math.round(hdg)+d)+360)%360;
+    const tx=cx2+d*DPX;
+    if(tx<x+1||tx>x+w-1) continue;
+    const i10=hv%10===0, i5=hv%5===0;
+    if(!i5&&!i10) continue;
+    c.strokeStyle=i10?'white':'#5a7a8a'; c.lineWidth=.7;
+    const th=i10?h*.55:h*.30;
+    c.beginPath(); c.moveTo(tx,y+h); c.lineTo(tx,y+h-th); c.stroke();
+    if(i10){
+      const lbl=cards[hv]||(hv/10).toString().padStart(2,'0');
+      c.fillStyle=cards[hv]?'#C49228':'white';
+      c.font=`${mini?6:8}px monospace`; c.textAlign='center';
+      c.fillText(lbl,tx,y+h*.44);
+    }
+  }
+  // AP HDG bug
+  if(apHdg>=0){
+    const bd=((apHdg-hdg+540)%360)-180;
+    const bx=cx2+bd*DPX;
+    if(bx>=x&&bx<=x+w){
+      c.fillStyle='#CC44CC';
+      c.beginPath(); c.moveTo(bx,y+h); c.lineTo(bx-4,y+h-9); c.lineTo(bx+4,y+h-9); c.closePath(); c.fill();
+    }
+  }
+  // Lubber line
+  c.strokeStyle='#C49228'; c.lineWidth=1.5;
+  c.beginPath(); c.moveTo(cx2,y); c.lineTo(cx2,y+h); c.stroke();
+  // HDG box
+  const bw=mini?24:30;
+  c.fillStyle='#000318'; c.strokeStyle='#C49228'; c.lineWidth=1;
+  c.fillRect(cx2-bw/2,y,bw,h*.62); c.strokeRect(cx2-bw/2,y,bw,h*.62);
+  c.fillStyle='#C49228'; c.font=`bold ${mini?8:10}px monospace`; c.textAlign='center';
+  c.fillText(String(Math.round(hdg)).padStart(3,'0'),cx2,y+h*.46);
+}
+
+// ── ND CANVAS RENDERER ────────────────────────────────────────────────
+function _rND(cv,mini){
+  if(!cv)return;
+  const c=cv.getContext('2d'), W=cv.width, H=cv.height;
+  c.fillStyle='#030810'; c.fillRect(0,0,W,H);
+  const cx=W/2, cy=H*.5, r=Math.min(W,H)*.42;
+  const {hdg}=_pfd;
+
+  // Info top
+  c.fillStyle='#030810'; c.fillRect(0,0,W,H*.1);
+  c.font=`${mini?7:9}px monospace`; c.textAlign='left';
+  c.fillStyle='#7BC44A'; c.fillText(`GS ${Math.round(_pfd.gs)}`,5,H*.07);
+  c.textAlign='center'; c.fillStyle='white'; c.fillText('PPOS',W/2,H*.07);
+  c.textAlign='right'; c.fillStyle='#7BC44A'; c.fillText(`M ${_pfd.mach.toFixed(2)}`,W-5,H*.07);
+
+  // Range rings
+  [.5,.8].forEach(f=>{
+    c.beginPath(); c.arc(cx,cy,r*f,0,Math.PI*2);
+    c.strokeStyle='#1a3a4a'; c.lineWidth=.5; c.setLineDash([4,4]); c.stroke(); c.setLineDash([]);
+    // Range label
+    const nm=mini?10:10, lbl=`${Math.round(nm*f)} NM`;
+    c.fillStyle='#2a4a5a'; c.font=`${mini?6:7}px monospace`; c.textAlign='center';
+    c.fillText(lbl,cx,cy-r*f+10);
+  });
+  // Outer ring
+  c.beginPath(); c.arc(cx,cy,r,0,Math.PI*2);
+  c.strokeStyle='#2a4a5a'; c.lineWidth=1; c.stroke();
+
+  // Compass rose (rotating)
+  c.save(); c.translate(cx,cy); c.rotate(-hdg*_R);
+  const cards={0:'N',90:'E',180:'S',270:'W'};
+  for(let deg=0;deg<360;deg+=5){
+    const i30=deg%30===0, i10=deg%10===0;
+    const rad=(deg-90)*_R;
+    const co=Math.cos(rad), si=Math.sin(rad);
+    const tl=i30?14:i10?9:5;
+    c.strokeStyle=i30?'white':'#5a7a8a'; c.lineWidth=i30?1.2:.6;
+    c.beginPath(); c.moveTo(r*co,r*si); c.lineTo((r-tl)*co,(r-tl)*si); c.stroke();
+    if(i30){
+      const lbl=cards[deg]||(deg/10).toString().padStart(2,'0');
+      c.save();
+      c.translate((r-24)*co,(r-24)*si);
+      c.rotate(hdg*_R); // counter-rotate so text stays upright
+      c.fillStyle=cards[deg]?'#C49228':'#DDEEFF';
+      c.font=`bold ${mini?7:10}px monospace`; c.textAlign='center';
+      c.fillText(lbl,0,4);
+      c.restore();
+    }
+  }
+  c.restore();
+
+  // Heading bug (AP selected heading)
+  if(_pfd.ap_hdg>=0){
+    const bugA=(_pfd.ap_hdg-hdg)*_R;
+    const bx=cx+(r-4)*Math.sin(bugA), by=cy-(r-4)*Math.cos(bugA);
+    c.save(); c.translate(bx,by); c.rotate(bugA);
+    c.fillStyle='#CC44CC';
+    c.beginPath(); c.moveTo(0,-6); c.lineTo(-4,3); c.lineTo(4,3); c.closePath(); c.fill();
+    c.restore();
+  }
+
+  // Track line (heading up = north up relative to hdg)
+  if(_pfd.gs>20){
+    c.strokeStyle='rgba(100,200,120,.65)'; c.lineWidth=1;
+    c.beginPath(); c.moveTo(cx,cy); c.lineTo(cx,cy-r*.38); c.stroke();
+  }
+
+  // Trail from map (lat/lng array)
+  if(typeof _trail!=='undefined'&&_trail&&_trail.length>1){
+    const last=_trail[_trail.length-1];
+    if(last){
+      const NM_PX=r/20; // 20 NM = full radius
+      c.save(); c.translate(cx,cy); c.rotate(-hdg*_R);
+      c.beginPath();
+      let first=true;
+      for(let i=Math.max(0,_trail.length-100);i<_trail.length;i++){
+        const pt=_trail[i];
+        const dlat=(pt[0]-last[0])*60*NM_PX;
+        const dlng=(pt[1]-last[1])*60*NM_PX*Math.cos(last[0]*_R);
+        if(first){c.moveTo(dlng,-dlat);first=false;}
+        else c.lineTo(dlng,-dlat);
+      }
+      c.strokeStyle='rgba(196,146,40,.5)'; c.lineWidth=1.5; c.stroke();
+      c.restore();
+    }
+  }
+
+  // Aircraft symbol (fixed at center)
+  const s=r*(mini?.08:.09);
+  c.strokeStyle='#C49228'; c.lineWidth=s*.35; c.lineCap='round';
+  c.beginPath(); c.moveTo(cx-s*2,cy+s*.3); c.lineTo(cx+s*2,cy+s*.3); c.stroke();
+  c.beginPath(); c.moveTo(cx,cy-s*2); c.lineTo(cx,cy+s); c.stroke();
+  c.beginPath(); c.moveTo(cx-s,cy+s); c.lineTo(cx+s,cy+s); c.stroke();
+
+  // Bottom info
+  const bi=H*.86;
+  c.fillStyle='rgba(3,8,16,.9)'; c.fillRect(0,bi,W,H-bi);
+  c.fillStyle='#7BC44A'; c.font=`${mini?7:9}px monospace`;
+  c.textAlign='left'; c.fillText(_pfd.next_wpt_name||'---',5,H*.935);
+  c.textAlign='right'; c.fillText(`${_pfd.next_wpt_dist||'—'} NM`,W-5,H*.935);
+  c.textAlign='center'; c.fillStyle='#aaa';
+  c.fillText(`${_pfd.dest_dist||'—'} NM to dest`,W/2,H*.972);
+}
+</script>
+</body>
+</html>
