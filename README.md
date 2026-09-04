@@ -21,8 +21,6 @@ Dashboard web real-time untuk mengontrol dan memantau pesawat di **Infinite Flig
 - **Network Discovery** — Tombol "Cari IF" bawaan, tidak perlu cari IP manual
 - **Status bar live** — Lokasi (ground/on flight), Departure, Arrival, Flight Time — semua dari flight plan game
 
-Kontrol gamepad/keyboard fisik (opsional, terpisah dari dashboard) tersedia lewat script `joystick.py` dan `keyboard_control.py` — lihat bagian [Kontrol Fisik](#kontrol-fisik-opsional) di bawah.
-
 ---
 
 ## Cara Kerja (Singkat)
@@ -104,60 +102,10 @@ Kalau discovery gagal mendeteksi, isi IP HP manual (lihat di HP: **Settings → 
 
 ```
 if-dashboard/
-├── server.py              # Backend — Flask + SocketIO, jembatan ke IF Connect API
-├── dashboard.html          # Frontend — dibuka lewat browser via server.py
-├── joystick.py             # (Opsional) kontrol gamepad fisik, dijalankan terpisah
-├── keyboard_control.py     # (Opsional) kontrol keyboard, dijalankan terpisah
-├── test_discovery.py       # (Opsional) tool diagnosa jaringan berdiri sendiri
+├── server.py         # Backend — Flask + SocketIO, jembatan ke IF Connect API
+├── dashboard.html     # Frontend — dibuka lewat browser via server.py
 └── README.md
 ```
-
-`server.py` dan `dashboard.html` adalah **inti** — cukup dua file ini untuk dashboard jalan penuh. File lainnya bersifat tambahan/opsional.
-
----
-
-## Kontrol Fisik (Opsional)
-
-Dashboard adalah kontrol via klik/ketik di browser. Kalau mau kontrol lebih presisi pakai gamepad atau keyboard, ada dua script **terpisah** — dijalankan bersamaan dengan `server.py` di terminal yang berbeda (bukan lewat dashboard).
-
-### Gamepad (`joystick.py`)
-
-```bash
-pip install pygame-ce
-python joystick.py
-```
-
-Tanpa argumen → otomatis mencari IF di jaringan (sama seperti tombol "Cari IF" di dashboard). Kalau mau connect manual: `python joystick.py <IP_HP>`.
-
-Setelah connect, **wajib** setup sekali di HP: **Settings → Controls → Virtual Joystick** → bind Axis 0-3 ke Roll/Pitch/Yaw/Throttle (persis seperti setting joystick fisik biasa).
-
-### Keyboard (`keyboard_control.py`)
-
-```bash
-pip install keyboard
-```
-
-> **Windows: wajib jalankan PowerShell sebagai Administrator**, kalau tidak, tombol tidak akan terdeteksi sama sekali.
-
-```bash
-python keyboard_control.py <IP_HP>
-```
-
-| Kontrol | Tombol |
-|---|---|
-| Pitch naik/turun | `W`/`↑` naik, `S`/`↓` turun |
-| Roll kiri/kanan | `A`/`←` kiri, `D`/`→` kanan |
-| Yaw kiri/kanan | `Left Ctrl` kiri, `Right Ctrl` kanan |
-| Throttle naik/turun | `Right Shift` naik, `Left Shift` turun |
-| Reverse thrust | `Space` (tahan) |
-| Flaps | `0`–`4` |
-| Gear / Park Brake / Spoilers | `G` / `P` / `C` |
-| Nav / Beacon lights | `N` / `B` |
-| AP toggle / AutoStart | `Tab` / `Enter` |
-| Engine 1 / 2 toggle | `I` / `O` |
-| Debug mode / Keluar | `F1` / `Esc` |
-
-Kedua script menggunakan mekanisme **virtual joystick** IF Connect API — bukan menekan tombol di layar HP secara langsung, jadi tetap responsif dan tidak mengganggu tampilan game.
 
 ---
 
@@ -168,8 +116,6 @@ Kedua script menggunakan mekanisme **virtual joystick** IF Connect API — bukan
 | "Cari IF" tidak menemukan apa-apa | IF Connect belum diaktifkan di HP; HP & laptop beda WiFi; firewall Windows memblokir Python — izinkan saat muncul prompt |
 | Connect berhasil tapi command tidak ngefek | Coba diskonek-konek ulang; pastikan Infinite Flight tetap di foreground (tidak di-lock/background) |
 | Trim tidak berubah di pesawat | Trim dikirim langsung via SetState — tidak butuh setup binding apapun, coba cek versi `server.py` terbaru |
-| Roll/Pitch/Yaw/Throttle di `joystick.py` tidak ngefek | Belum di-bind di HP: **Settings → Controls → Virtual Joystick** |
-| Keyboard tidak terdeteksi (`keyboard_control.py`) | PowerShell harus dijalankan **as Administrator** |
 | Port 5000 sudah dipakai | Aplikasi lain memakai port itu — matikan aplikasi tersebut, atau ubah port di baris terakhir `server.py` |
 
 ---
